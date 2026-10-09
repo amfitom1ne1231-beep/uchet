@@ -51,6 +51,7 @@
     transition:transform .2s var(--spring),background .2s,color .2s}
   .mode button:active{transform:scale(.94);background:var(--w);color:#000}
   body.ro .w-only{display:none!important}
+  body.no-own .own-only{display:none!important}
   body.ro .entwrap .acts{display:none}
   body.ro .entwrap.open .ent{transform:none}
 
@@ -655,10 +656,10 @@
   <span class="cap">Кастомеры</span>
   <div id="clist"></div>
   <div class="addrow w-only"><input type="text" class="txt" id="caddi" placeholder="Новый кастомер" autocomplete="off"><button id="cadd">Добавить</button></div>
-  <div class="w-only">
+  <div class="w-only own-only">
     <span class="cap">Доступ через Telegram</span>
     <div id="mlist"></div>
-    <div class="note">Учет видят только те, кого ты пустил. Новый человек открывает учет в боте — запрос появляется здесь, а тебе приходит сообщение.</div>
+    <div class="note">Учет видят только те, кого ты пустил. Новый человек открывает учет в боте — запрос появляется здесь, а тебе приходит сообщение.<br>«Правка» — человек сможет записывать и править смены, оплаты и списки. Этот список доступа меняешь только ты.</div>
   </div>
   <span class="cap">Выгрузка</span>
   <button class="btn sec" id="dlCsv">Скачать таблицу (.csv)</button>
@@ -747,7 +748,7 @@ function showText(title,txt){
 
 /* ======================= СОСТОЯНИЕ ======================= */
 let S={workers:[],customers:[],shifts:[],ops:[]};
-let user=null, isOwner=false, locked=true;
+let user=null, isOwner=false, canWrite=false, locked=true;
 let hours=6, selW=[], selC=[], period='m', opCtx=null, openId=null, curTab=0, editId=null, editPaid={};
 let booting=true, openDebt=null;
 const skeleton=n=>Array(n).fill(
@@ -889,7 +890,7 @@ window.addEventListener('offline', renderOffbar);
 // а тем, кого он пустил через Telegram, — функция tg-access по подписи Telegram.
 const gateErr=st=>Object.assign(new Error('gate'),{gate:st});
 async function fetchAll(){
-  if(isOwner || (user && !online())){
+  if(canWrite || (user && !online())){
     const r=await Promise.all([
       sb.from('workers').select('*').order('created_at'),
       sb.from('customers').select('*').order('created_at'),
@@ -907,6 +908,13 @@ async function fetchAll(){
   if(error) throw error;
   if(!data || data.status==='error') throw new Error((data&&data.error)||'tg-access');
   if(!data.ok) throw gateErr(data);
+  // владелец дал правку — входим под учеткой этого Telegram; забрал — выходим из нее
+  if(data.session){
+    try{ await sb.auth.setSession(data.session); await refreshAuth(); }catch(_){}
+  } else if(tgAccount(user)){
+    try{ await sb.auth.signOut({scope:'local'}); }catch(_){}
+    await refreshAuth();
+  }
   const d=data.data;
   return [d.workers,d.customers,d.shifts,d.shift_workers,d.shift_customers,d.ops];
 }
@@ -929,13 +937,17 @@ async function loadAll(){
 async function refreshAuth(){
   const {data}=await sb.auth.getSession();
   user=data&&data.session?data.session.user:null;
-  isOwner=false;
+  isOwner=false; canWrite=false;
   if(user){
     const {data:rows}=await sb.from('owners').select('email');
     isOwner=!!(rows&&rows.some(r=>String(r.email).toLowerCase()===String(user.email).toLowerCase()));
+    // правку тем, кого пустили через Telegram, выдает владелец — решает база
+    canWrite = isOwner || (await sb.rpc('can_write')).data===true;
   }
-  locked=!isOwner;
+  locked=!canWrite;
 }
+// учетка человека из Telegram (не владельца) — ее выдает и забирает tg-access
+const tgAccount=u=>!!(u && u.app_metadata && u.app_metadata.tg_id);
 let reloadT;
 function scheduleReload(){
   clearTimeout(reloadT);
@@ -981,7 +993,7 @@ function startApp(){
         .subscribe();
     }catch(_){}
   }
-  if(!locked) ownerExtras();
+  if(isOwner) ownerExtras();
 }
 
 /* ======================= ЗАКРЫТЫЙ ДОСТУП ======================= */
@@ -1019,7 +1031,7 @@ function ownerExtras(){
 }
 let M=[];
 async function loadMembers(announce){
-  if(locked){ M=[]; renderMembers(); return; }
+  if(!isOwner){ M=[]; renderMembers(); return; }
   const {data,error}=await sb.from('members').select('*').order('created_at');
   if(error) return;
   M=data||[]; renderMembers();
@@ -1028,20 +1040,37 @@ async function loadMembers(announce){
   if(announce && n) toast('Запросы доступа: '+n+' — открой ⚙');
 }
 function renderMembers(){
-  const st={pending:'ждет',active:'есть доступ',blocked:'закрыт'};
+  const st=m=> m.owner_tg ? 'владелец' : m.status==='pending' ? 'ждет' : m.status==='blocked' ? 'закрыт'
+    : m.can_edit ? 'правит' : 'смотрит';
   document.getElementById('mlist').innerHTML = M.length ? M.map(m=>
     '<div class="lrow'+(m.status==='active'?'':' off')+'"><span class="nm">'+esc(m.name||('id '+m.tg_id))+
       (m.username?' <span class="un">@'+esc(m.username)+'</span>':'')+
-      (m.owner_tg?'<span class="tag">владелец</span>':'<span class="tag">'+st[m.status]+'</span>')+'</span>'+
+      '<span class="tag">'+st(m)+'</span></span>'+
     (m.status==='pending'
       ? '<button class="me on" data-mok="'+m.tg_id+'">Пустить</button><button class="me" data-mno="'+m.tg_id+'">Отклонить</button>'
       : m.status==='active'
-        ? '<button class="me" data-mno="'+m.tg_id+'">Закрыть</button>'
+        ? (m.owner_tg ? '' : '<button class="me'+(m.can_edit?' on':'')+'" data-medit="'+m.tg_id+'" aria-pressed="'+!!m.can_edit+'">'+
+            (m.can_edit?'Правка ✓':'Правка')+'</button>')+
+          '<button class="me" data-mno="'+m.tg_id+'">Закрыть</button>'
         : '<button class="me" data-mok="'+m.tg_id+'">Вернуть</button>')+
     '</div>').join('')
     : '<div class="empty">Запросов нет. Человек открывает учет в боте — и появляется здесь.</div>';
 }
 document.getElementById('mlist').onclick=async e=>{
+  const ed=e.target.closest('[data-medit]');
+  if(ed){
+    if(guard()||!isOwner) return;
+    const id=ed.dataset.medit, m=M.find(x=>String(x.tg_id)===id), on=!(m&&m.can_edit);
+    if(on && !await ask('Разрешить '+((m&&m.name)||id)+' записывать и править смены, оплаты и списки?')) return;
+    const {error}=await sb.from('members').update({can_edit:on}).eq('tg_id',id);
+    if(error) return fail(error);
+    tap(18); await loadMembers();
+    if(!on){ toast('Правка закрыта — дальше только просмотр'); return; }
+    let sent=false;
+    try{ const {data}=await sb.functions.invoke('tg-access',{body:{notify:id,what:'edit'}}); sent=!!(data&&data.ok); }catch(_){}
+    toast(sent ? 'Правка открыта — бот написал '+((m&&m.name)||'человеку') : 'Правка открыта, скажи человеку открыть учет заново');
+    return;
+  }
   const ok=e.target.closest('[data-mok]'), no=e.target.closest('[data-mno]');
   if(!ok&&!no) return;
   if(guard()) return;
@@ -1076,13 +1105,16 @@ async function fail(error,what){
 /* ======================= РЕЖИМ ДОСТУПА ======================= */
 function applyLock(){
   document.body.classList.toggle('ro',locked);
+  document.body.classList.toggle('no-own',!isOwner);
   const fr=document.getElementById('firstRun');
   if(fr) fr.style.display=(!locked && !booting && !S.shifts.length && !S.ops.length)?'block':'none';
   document.getElementById('form').style.display=locked?'none':'block';
   document.getElementById('lockCard').style.display=locked?'block':'none';
   document.getElementById('mode').innerHTML = locked
-    ? '<span class="t"><b>Только просмотр</b>'+(user?' · нет прав на запись':' · записи ведет владелец')+'</span><button id="login">Войти</button>'
-    : '<span class="t"><b>Полный доступ</b> · '+esc(user?user.email:'')+'</span><button id="logout">Выйти</button>';
+    ? '<span class="t"><b>Только просмотр</b>'+(user&&!tgAccount(user)?' · нет прав на запись':' · записи ведет владелец')+'</span><button id="login">Войти</button>'
+    : !isOwner
+      ? '<span class="t"><b>Можно править</b> · правку дал владелец</span>'
+      : '<span class="t"><b>Полный доступ</b> · '+esc(user?user.email:'')+'</span><button id="logout">Выйти</button>';
   document.getElementById('setLead').textContent = locked
     ? 'Просмотр списков. Изменения доступны владельцу.'
     : '✎ — переименовать, × — убрать в архив. Старые смены не пострадают.';
