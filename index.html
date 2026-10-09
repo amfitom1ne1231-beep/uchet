@@ -188,6 +188,7 @@
   .row .n .sub{font-size:12px;color:var(--g2);font-family:var(--mono);margin-top:2px;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .row .b{font-family:var(--mono);font-weight:600;font-size:18px;letter-spacing:-.03em}
+  .row .n .sub.wrap{white-space:normal}
   .row.settled .b{color:var(--g3)}
   .row.kassa{background:#181818}
   .row.kassa .nm{font-weight:600}
@@ -212,7 +213,7 @@
   .drow .chev{color:var(--g2);font-size:13px;transition:transform .35s var(--spring)}
   .drow.open .chev{transform:rotate(90deg)}
   .dgames{overflow:hidden;max-height:0;transition:max-height .42s var(--spring)}
-  .dgames.open{max-height:900px}
+  .dgames.open{max-height:6000px}
   .dgin{padding:2px 16px 16px}
   .grow{display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--sep)}
   .grow .gi{flex:1;min-width:0}
@@ -345,7 +346,8 @@
   .bstats .v{font-family:var(--mono);font-weight:600;font-size:16px;letter-spacing:-.03em;display:block}
   .bstats .c{font-size:10.5px;color:var(--g2);margin-top:3px;display:block}
   .bstats .b1.debt .v{background:var(--w);color:#000;border-radius:6px;padding:1px 7px;display:inline-block}
-  .board .btn{margin-top:15px}
+  .board .bbtns{display:flex;gap:8px;margin-top:15px}
+  .board .bbtns .btn{flex:1;padding:14px 8px;font-size:15px}
   .board.fresh .bval{opacity:.35}
   .board.fresh .bstats{opacity:.35}
   .firstrun{padding:22px 18px;text-align:center}
@@ -479,7 +481,10 @@
   <div class="bcap">Касса · не роздано</div>
   <div class="bval odo" id="boardVal"></div>
   <div class="bstats" id="boardStats"></div>
-  <button class="btn sec w-only" data-exp="1">Выдать кассу</button>
+  <div class="bbtns w-only">
+    <button class="btn" data-inc="1">Пришла оплата</button>
+    <button class="btn sec" data-exp="1">Выдать кассу</button>
+  </div>
 </div>
 
 <div class="offbar" id="offbar" style="display:none"></div>
@@ -605,9 +610,10 @@
   <div class="grab"></div>
   <h2 id="opTitle">Выплата</h2>
   <div class="lead" id="opLead"></div>
-  <span class="cap" style="margin-top:0">Сумма</span>
+  <span class="cap" style="margin-top:0" id="opAmtCap">Сумма</span>
   <input type="text" id="opAmt" inputmode="decimal" placeholder="0">
   <div class="quick" id="opQuick"></div>
+  <div class="note" id="opSplit"></div>
   <span class="cap">Дата</span>
   <input type="date" id="opDate">
   <span class="cap">Заметка</span>
@@ -1169,7 +1175,7 @@ function renderPreview(){
 
 /* ======================= ИТОГИ ======================= */
 function balances(){
-  let inK=0,outK=0; const acc={},paid={},debt={};
+  let inK=0,outK=0; const acc={},paid={},debt={},earned={};
   S.workers.forEach(w=>{acc[w.id]=0;paid[w.id]=0;});
   let handed=0;                       // сколько уже роздано на месте
   S.shifts.forEach(s=>{
@@ -1187,14 +1193,28 @@ function balances(){
       openShare = total>0 ? unpaid/total : 0;
     }
     inK += s.kassa * openShare;
-    s.workerIds.forEach(id=>{ acc[id]=(acc[id]||0)+s.per_worker*openShare; });
+    s.workerIds.forEach(id=>{
+      acc[id]=(acc[id]||0)+s.per_worker*openShare;
+      earned[id]=(earned[id]||0)+s.per_worker;
+    });
   });
+  // Оплаты от игроков и долг до начала учета — общими суммами, как в заметках:
+  // ни к игроку, ни к смене не привязаны. Половина — кассе, половина — операторам.
+  let common=0, lump=0;
   S.ops.forEach(o=>{
     if(o.kind==='expense') outK+=o.amount;
-    else paid[o.worker_id]=(paid[o.worker_id]||0)+o.amount;
+    else if(o.kind==='payout') paid[o.worker_id]=(paid[o.worker_id]||0)+o.amount;
+    else if(o.kind==='carry') common+=o.amount;
+    else if(o.kind==='income'){ common-=o.amount; lump+=o.amount; }
   });
-  const debtTotal=Object.keys(debt).reduce((a,k)=>a+debt[k],0);
-  return {inK,outK,handed,kassa:inK-outK,acc,paid,debt,debtTotal};
+  inK += common/2;
+  // операторскую половину делим между рабочими так же, как им начислялось по сменам
+  const ws=Object.keys(earned).length ? Object.keys(earned) : S.workers.map(w=>w.id);
+  const base=ws.reduce((a,id)=>a+(earned[id]||0),0);
+  ws.forEach(id=>{ acc[id]=(acc[id]||0)+common/2*(base>0?(earned[id]||0)/base:1/ws.length); });
+  handed += lump;
+  const debtTotal=Object.keys(debt).reduce((a,k)=>a+debt[k],0)+common;
+  return {inK,outK,handed,kassa:inK-outK,acc,paid,debt,common,debtTotal};
 }
 function renderSummary(){
   const b=balances();
@@ -1222,9 +1242,21 @@ function renderSummary(){
 
   // долги кастомеров — считаем по всей истории, не по периоду
   const dk=Object.keys(b.debt).filter(k=>b.debt[k]>0.005);
-  document.getElementById('debtBlock').style.display = dk.length?'block':'none';
-  if(dk.length){
-    document.getElementById('debtCard').innerHTML = dk
+  const hasCommon=Math.abs(b.common)>0.005;
+  document.getElementById('debtBlock').style.display = (dk.length||hasCommon)?'block':'none';
+  // общие оплаты и долг до учета не знают, за кого — отдельной строкой, чтобы итог сходился
+  const carry=S.ops.filter(o=>o.kind==='carry').reduce((a,o)=>a+o.amount,0);
+  const lumps=S.ops.filter(o=>o.kind==='income').reduce((a,o)=>a+o.amount,0);
+  const commonRow = hasCommon
+    ? '<div class="row kassa"><div class="n"><div class="nm">Общие оплаты</div>'+
+        '<div class="sub wrap">'+(carry>0.005?'до учета +'+money(carry)+' · ':'')+'оплаты −'+money(lumps)+'</div></div>'+
+        '<div class="b">'+money(b.common)+'</div>'+
+        '<button class="pill w-only" data-inc="1">Оплата</button></div>'
+    : '';
+  if(dk.length||hasCommon){
+    document.getElementById('debtCard').innerHTML = '<div class="row"><div class="n"><div class="nm">Итого должны</div>'+
+        '<div class="sub wrap">операторам и кассе по '+money(b.debtTotal/2)+'</div></div>'+
+        '<div class="b inv">'+money(b.debtTotal)+'</div></div>'+commonRow + dk
       .sort((x,y)=>b.debt[y]-b.debt[x])
       .map(function(id){
         const games=S.shifts.filter(s=>(s.custLinks||[]).some(l=>l.id===id&&!l.paid))
@@ -1246,7 +1278,7 @@ function renderSummary(){
         }).join('');
         return '<div class="drow'+(open?' open':'')+'" data-debtrow="'+id+'">'+
             '<div class="n"><div class="nm">'+esc(cName(id))+'</div>'+
-            '<div class="sub">игр не оплачено: '+games.length+'</div></div>'+
+            '<div class="sub">по сменам · не оплачено игр: '+games.length+'</div></div>'+
             '<div class="b inv">'+money(b.debt[id])+'</div>'+
             '<div class="chev">›</div></div>'+
           '<div class="dgames'+(open?' open':'')+'" data-dg="'+id+'"><div class="dgin">'+inner+
@@ -1390,6 +1422,15 @@ function entryHtml(e){
     cls=' out'; top='Выплата · '+esc(wName(e.worker_id));
     sub=e.note?esc(e.note):'расчет с рабочим'; sum='−'+money(e.amount);
     detail='<div>выдано на руки: '+esc(wName(e.worker_id))+'</div>';
+  } else if(e.kind==='income' || e.kind==='carry'){
+    const half=money(e.amount/2), inc=e.kind==='income';
+    top = inc ? 'Оплата от игроков' : 'Долг до начала учета';
+    sub = (e.note?esc(e.note)+' · ':'')+'по '+half+' операторам и кассе';
+    sum = (inc?'+':'')+money(e.amount);
+    detail = '<div>'+(inc?'игроки заплатили всего: ':'игроки должны всего: ')+money(e.amount)+'</div>'+
+      '<div>операторам — '+half+', кассе — '+half+'</div>'+
+      '<div>'+(inc?'без привязки к игроку и смене':'перенесено из заметок')+'</div>'+
+      (e.note?'<div>заметка: '+esc(e.note)+'</div>':'');
   } else {
     cls=' out'; top='Выдача кассы';
     sub=e.note?esc(e.note):'касса передана'; sum='−'+money(e.amount);
@@ -1561,10 +1602,10 @@ document.getElementById('v-sum').addEventListener('click',async e=>{
     tap(18); await loadAll(); renderAll(); toast(cName(id)+' — долг закрыт');
     return;
   }
-  const pay=e.target.closest('[data-pay]'), exp=e.target.closest('[data-exp]');
-  if(!pay&&!exp) return;
+  const pay=e.target.closest('[data-pay]'), exp=e.target.closest('[data-exp]'), inc=e.target.closest('[data-inc]');
+  if(!pay&&!exp&&!inc) return;
   if(guard())return;
-  if(pay) openOp('payout',pay.dataset.pay); else openOp('expense',null);
+  if(pay) openOp('payout',pay.dataset.pay); else openOp(inc?'income':'expense',null);
 });
 
 document.getElementById('list').onclick=async e=>{
@@ -1632,9 +1673,10 @@ document.getElementById('list').onclick=async e=>{
 function reportText(){
   const b=balances(), lines=['УЧЕТ','Касса — не роздано: '+money(b.kassa)];
   if(b.debtTotal>0.005){
-    lines.push('Должны игроки: '+money(b.debtTotal));
+    lines.push('Должны игроки: '+money(b.debtTotal)+' (операторам '+money(b.debtTotal/2)+')');
     Object.keys(b.debt).filter(k=>b.debt[k]>0.005)
-      .forEach(k=>lines.push('  · '+cName(k)+' — '+money(b.debt[k])));
+      .forEach(k=>lines.push('  · '+cName(k)+' — '+money(b.debt[k])+' по сменам'));
+    if(Math.abs(b.common)>0.005) lines.push('  · общие оплаты и долг до учета — '+money(b.common));
   }
   S.workers.filter(w=>w.active).forEach(w=>
     lines.push(w.name+' — к выплате '+money((b.acc[w.id]||0)-(b.paid[w.id]||0))));
@@ -1645,6 +1687,10 @@ function reportText(){
       e.workerIds.map(wName).join('/')+(e.customerIds.length?' ('+e.customerIds.map(cName).join('+')+')':'')+
       ' — '+money(e.total));
     else if(e.kind==='payout') lines.push(day+' — выплата '+wName(e.worker_id)+' '+money(e.amount));
+    else if(e.kind==='income') lines.push(day+' — оплата от игроков '+money(e.amount)+
+      ' (операторам '+money(e.amount/2)+')'+(e.note?' — '+e.note:''));
+    else if(e.kind==='carry') lines.push(day+' — долг до начала учета '+money(e.amount)+
+      ' (операторам '+money(e.amount/2)+')');
     else lines.push(day+' — выдача кассы '+money(e.amount)+(e.note?' ('+e.note+')':''));
   });
   return lines.join('\n');
@@ -1739,28 +1785,41 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden) schedule
 
 function openOp(kind,workerId){
   opCtx={kind,workerId};
-  const b=balances();
-  const due = kind==='payout' ? (b.acc[workerId]||0)-(b.paid[workerId]||0) : b.kassa;
-  document.getElementById('opTitle').textContent = kind==='payout'?'Выплата · '+wName(workerId):'Выдача кассы';
-  document.getElementById('opLead').textContent = kind==='payout'
-    ? 'К выплате сейчас: '+money(due) : 'В кассе к передаче: '+money(b.kassa);
+  const b=balances(), inc=kind==='income';
+  // оплату пишем как в заметках — операторскую часть; касса получает столько же
+  const due = kind==='payout' ? (b.acc[workerId]||0)-(b.paid[workerId]||0) : inc ? b.debtTotal/2 : b.kassa;
+  document.getElementById('opTitle').textContent =
+    kind==='payout' ? 'Выплата · '+wName(workerId) : inc ? 'Оплата от игроков' : 'Выдача кассы';
+  document.getElementById('opLead').textContent = kind==='payout' ? 'К выплате сейчас: '+money(due)
+    : inc ? 'Должны сейчас операторам '+money(due)+' и столько же кассе. Кто за кого платил — не важно.'
+    : 'В кассе к передаче: '+money(b.kassa);
+  document.getElementById('opAmtCap').textContent = inc ? 'Операторам — как в заметках' : 'Сумма';
+  document.getElementById('opNote').placeholder = inc ? 'Кто передал, необязательно' : 'Кому отдал, необязательно';
   document.getElementById('opAmt').value='';
   document.getElementById('opNote').value='';
   document.getElementById('opDate').value=today();
   document.getElementById('opQuick').innerHTML = due>0
     ? '<button data-q="'+due+'">Всё: '+money(due)+'</button><button data-q="'+(due/2)+'">Половина</button>' : '';
+  opSplit();
   openSheet('opSheet');
 }
+function opSplit(){
+  const a=parseAmt(document.getElementById('opAmt').value);
+  document.getElementById('opSplit').textContent = opCtx && opCtx.kind==='income' && a>0
+    ? 'От игроков всего '+money(a*2)+': операторам '+money(a)+', в кассу '+money(a) : '';
+}
+document.getElementById('opAmt').oninput=opSplit;
 document.getElementById('opQuick').onclick=e=>{
   const b=e.target.closest('[data-q]'); if(!b)return;
   document.getElementById('opAmt').value=String(Math.round(Number(b.dataset.q)*100)/100).replace('.',',');
+  opSplit();
 };
 document.getElementById('opSave').onclick=async()=>{
   if(guard())return;
   const amt=parseAmt(document.getElementById('opAmt').value);
   if(!amt||amt<=0){ toast('Введи сумму'); return; }
   const opRow={
-    kind:opCtx.kind, worker_id:opCtx.workerId||null, amount:amt,
+    kind:opCtx.kind, worker_id:opCtx.workerId||null, amount:opCtx.kind==='income'?amt*2:amt,
     op_date:document.getElementById('opDate').value||today(),
     note:document.getElementById('opNote').value.trim()||null
   };
@@ -1775,7 +1834,9 @@ document.getElementById('opSave').onclick=async()=>{
   if(error) return fail(error,'Не записалось');
   tap(18);
   await loadAll(); renderAll(); closeSheets();
-  toast(opCtx.kind==='payout'?'Выплата '+money(amt)+' записана':'Выдача кассы '+money(amt)+' записана');
+  toast(opCtx.kind==='payout' ? 'Выплата '+money(amt)+' записана'
+    : opCtx.kind==='income' ? 'Оплата записана: операторам '+money(amt)+', в кассу '+money(amt)
+    : 'Выдача кассы '+money(amt)+' записана');
 };
 
 /* ======================= СПИСКИ: ПРАВКА ======================= */
@@ -1874,6 +1935,8 @@ function csvText(){
       (e.custLinks||[]).map(l=>cName(l.id)+': '+(l.paid?'оплачено':'в долг')).join('; '),
       e.note||'']);
     else if(e.kind==='payout') rows.push(['Выплата',e.date,'','','',wName(e.worker_id),'',-e.amount,'','','','',e.note||'']);
+    else if(e.kind==='income') rows.push(['Оплата от игроков',e.date,'','','','','',-e.amount,-e.amount/2,'','','',e.note||'']);
+    else if(e.kind==='carry') rows.push(['Долг до начала учета',e.date,'','','','','',e.amount,e.amount/2,'','','',e.note||'']);
     else rows.push(['Выдача кассы',e.date,'','','','','',-e.amount,-e.amount,'','','',e.note||'']);
   });
   const b=balances();
@@ -2034,6 +2097,7 @@ function renderBoard(b,shiftCount,hrs){
 }
 document.getElementById('board').addEventListener('click',function(e){
   if(e.target.closest('[data-exp]')){ if(guard())return; openOp('expense',null); }
+  if(e.target.closest('[data-inc]')){ if(guard())return; openOp('income',null); }
 });
 
 // липкая шапка появляется при прокрутке
