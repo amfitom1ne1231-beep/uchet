@@ -319,6 +319,15 @@
   #boot .dot{width:9px;height:9px;border-radius:50%;background:var(--w);animation:pulse 1.1s infinite}
   @keyframes pulse{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
   #boot .t{font-size:14px;color:var(--g2)}
+  .gate{width:100%;max-width:340px;padding:0 20px;text-align:center}
+  .gate .ic{font-size:30px;margin-bottom:12px}
+  #boot .gate .t{font-size:19px;font-weight:600;letter-spacing:-.02em;color:var(--w)}
+  .gate .s{font-size:14px;color:var(--g2);margin:8px 0 22px;line-height:1.55}
+  .gate .s .num{display:inline-block;margin-top:10px;color:var(--g1);font-size:12.5px}
+  .lrow .un{color:var(--g2);font-size:13px}
+  #gear.dot{position:relative}
+  #gear.dot:after{content:'';position:absolute;top:5px;right:5px;width:9px;height:9px;border-radius:50%;
+    background:var(--w);box-shadow:0 0 0 2px var(--bg)}
 
 
   /* ===== ЖИВОЙ СЛОЙ ===== */
@@ -640,6 +649,11 @@
   <span class="cap">Кастомеры</span>
   <div id="clist"></div>
   <div class="addrow w-only"><input type="text" class="txt" id="caddi" placeholder="Новый кастомер" autocomplete="off"><button id="cadd">Добавить</button></div>
+  <div class="w-only">
+    <span class="cap">Доступ через Telegram</span>
+    <div id="mlist"></div>
+    <div class="note">Учет видят только те, кого ты пустил. Новый человек открывает учет в боте — запрос появляется здесь, а тебе приходит сообщение.</div>
+  </div>
   <span class="cap">Выгрузка</span>
   <button class="btn sec" id="dlCsv">Скачать таблицу (.csv)</button>
   <button class="btn sec mt" id="dlJson">Скачать копию (.json)</button>
@@ -865,27 +879,43 @@ window.addEventListener('online', function(){ renderOffbar(); flushQueue(); });
 window.addEventListener('offline', renderOffbar);
 
 /* ======================= ЗАГРУЗКА ======================= */
+// Учет закрыт от посторонних: база отдает данные только владельцу (вход по почте),
+// а тем, кого он пустил через Telegram, — функция tg-access по подписи Telegram.
+const gateErr=st=>Object.assign(new Error('gate'),{gate:st});
+async function fetchAll(){
+  if(isOwner || (user && !online())){
+    const r=await Promise.all([
+      sb.from('workers').select('*').order('created_at'),
+      sb.from('customers').select('*').order('created_at'),
+      sb.from('shifts').select('*').order('work_date',{ascending:false}).order('created_at',{ascending:false}),
+      sb.from('shift_workers').select('*'),
+      sb.from('shift_customers').select('*'),
+      sb.from('ops').select('*').order('op_date',{ascending:false})
+    ]);
+    const err=r.find(x=>x.error);
+    if(err) throw err.error;
+    return r.map(x=>x.data||[]);
+  }
+  if(!TG) throw gateErr({status:'closed'});
+  const {data,error}=await sb.functions.invoke('tg-access',{body:{initData:TG.initData}});
+  if(error) throw error;
+  if(!data || data.status==='error') throw new Error((data&&data.error)||'tg-access');
+  if(!data.ok) throw gateErr(data);
+  const d=data.data;
+  return [d.workers,d.customers,d.shifts,d.shift_workers,d.shift_customers,d.ops];
+}
 async function loadAll(){
-  const [w,c,s,sw,sc,o]=await Promise.all([
-    sb.from('workers').select('*').order('created_at'),
-    sb.from('customers').select('*').order('created_at'),
-    sb.from('shifts').select('*').order('work_date',{ascending:false}).order('created_at',{ascending:false}),
-    sb.from('shift_workers').select('*'),
-    sb.from('shift_customers').select('*'),
-    sb.from('ops').select('*').order('op_date',{ascending:false})
-  ]);
-  const err=[w,c,s,sw,sc,o].find(r=>r.error);
-  if(err){ throw err.error; }
-  S.workers=w.data||[]; S.customers=c.data||[];
-  S.ops=(o.data||[]).map(x=>Object.assign({},x,{amount:Number(x.amount)}));
-  S.shifts=(s.data||[]).map(x=>Object.assign({},x,{
+  const [w,c,s,sw,sc,o]=await fetchAll();
+  S.workers=w; S.customers=c;
+  S.ops=o.map(x=>Object.assign({},x,{amount:Number(x.amount)}));
+  S.shifts=s.map(x=>Object.assign({},x,{
     total:Number(x.total), kassa:Number(x.kassa),
     per_worker:Number(x.per_worker), per_customer:Number(x.per_customer),
-    workerIds:(sw.data||[]).filter(r=>r.shift_id===x.id).map(r=>r.worker_id),
-    custLinks:(sc.data||[]).filter(r=>r.shift_id===x.id)
+    workerIds:sw.filter(r=>r.shift_id===x.id).map(r=>r.worker_id),
+    custLinks:sc.filter(r=>r.shift_id===x.id)
       .map(r=>({id:r.customer_id,paid:r.paid===true,paid_at:r.paid_at||null,
                 amount:r.amount!=null?Number(r.amount):Number(x.per_customer)})),
-    customerIds:(sc.data||[]).filter(r=>r.shift_id===x.id).map(r=>r.customer_id)
+    customerIds:sc.filter(r=>r.shift_id===x.id).map(r=>r.customer_id)
   }));
   offlineData=false;
   applyPending();
@@ -903,7 +933,10 @@ async function refreshAuth(){
 let reloadT;
 function scheduleReload(){
   clearTimeout(reloadT);
-  reloadT=setTimeout(async()=>{ try{ await loadAll(); renderAll(); }catch(e){} },500);
+  reloadT=setTimeout(async()=>{
+    try{ await loadAll(); renderAll(); }
+    catch(e){ if(e&&e.gate) closeGate(e.gate); }   // доступ закрыли, пока учет был открыт
+  },500);
 }
 async function boot(){
   loadQueue();
@@ -912,26 +945,107 @@ async function boot(){
     try{
       await loadAll(); saveCache();
     }catch(netErr){
+      if(netErr && netErr.gate) throw netErr;
       if(!loadCache()) throw netErr;
       applyPending();
     }
-    selW = (!locked && S.workers.filter(w=>w.is_me)[0]) ? [S.workers.filter(w=>w.is_me)[0].id] : [];
-    applyLock(); renderAll();
-    booting=false; renderAll(); initReveal();
-    document.getElementById('boot').classList.add('off');
-    renderOffbar();
-    flushQueue();
-    try{
-      sb.channel('uchet')
-        .on('postgres_changes',{event:'*',schema:'public'},scheduleReload)
-        .subscribe();
-    }catch(_){}
+    startApp();
   }catch(e){
+    if(e && e.gate){ closeGate(e.gate); return; }
     document.getElementById('boot').innerHTML=
       '<div class="t" style="max-width:280px;text-align:center;line-height:1.5">Не удалось связаться с базой.<br>Проверь интернет и обнови страницу.</div>';
     return;
   }
 }
+let started=false;
+function startApp(){
+  gated=null;
+  const me=S.workers.filter(w=>w.is_me)[0];
+  selW = (!locked && me) ? [me.id] : [];
+  applyLock(); renderAll();
+  booting=false; renderAll();
+  document.getElementById('boot').classList.add('off');
+  renderOffbar();
+  flushQueue();
+  if(!started){
+    started=true; initReveal();
+    try{
+      sb.channel('uchet')
+        .on('postgres_changes',{event:'*',schema:'public'},scheduleReload)
+        .subscribe();
+    }catch(_){}
+  }
+  if(!locked) ownerExtras();
+}
+
+/* ======================= ЗАКРЫТЫЙ ДОСТУП ======================= */
+let gated=null;
+const GATE={
+  pending:['Доступ запрошен','Владелец учета получил запрос. Как подтвердит — нажми «Проверить».'],
+  blocked:['Нет доступа','Владелец закрыл тебе доступ к учету.'],
+  notg:['Открой заново','Закрой учет и открой его снова кнопкой в боте.'],
+  closed:['Учет закрыт','Учет открывается через Telegram-бота, для тех, кого пустил владелец.']
+};
+// посторонним — ни данных на экране, ни копии в памяти телефона
+function closeGate(st){
+  gated=st;
+  S={workers:[],customers:[],shifts:[],ops:[]};
+  safeStorage.removeItem(CKEY);
+  renderAll();
+  const g=GATE[st.status]||GATE.closed, boot=document.getElementById('boot');
+  boot.innerHTML='<div class="gate"><div class="ic">🔒</div><div class="t">'+g[0]+'</div>'+
+    '<div class="s">'+g[1]+(st.status==='pending'&&st.id
+      ? '<br><span class="num">'+esc(st.name||'')+' · id '+esc(st.id)+'</span>' : '')+'</div>'+
+    (st.status==='pending'?'<button class="btn" id="gateRetry">Проверить</button>':'')+
+    '<button class="btn sec mt" id="gateLogin">Я владелец — войти по почте</button></div>';
+  boot.classList.remove('off');
+}
+document.getElementById('boot').addEventListener('click',function(e){
+  if(e.target.id==='gateRetry'){ e.target.textContent='…'; boot(); }
+  if(e.target.id==='gateLogin'){ this.classList.add('off'); openSheet('authSheet'); }
+});
+
+// владельцу: свой Telegram — в доверенные, плюс список запросов
+function ownerExtras(){
+  if(TG) sb.functions.invoke('tg-access',{body:{initData:TG.initData,owner:true}})
+    .then(()=>loadMembers()).catch(function(){});
+  loadMembers(true);
+}
+let M=[];
+async function loadMembers(announce){
+  if(locked){ M=[]; renderMembers(); return; }
+  const {data,error}=await sb.from('members').select('*').order('created_at');
+  if(error) return;
+  M=data||[]; renderMembers();
+  const n=M.filter(m=>m.status==='pending').length;
+  document.getElementById('gear').classList.toggle('dot',n>0);
+  if(announce && n) toast('Запросы доступа: '+n+' — открой ⚙');
+}
+function renderMembers(){
+  const st={pending:'ждет',active:'есть доступ',blocked:'закрыт'};
+  document.getElementById('mlist').innerHTML = M.length ? M.map(m=>
+    '<div class="lrow'+(m.status==='active'?'':' off')+'"><span class="nm">'+esc(m.name||('id '+m.tg_id))+
+      (m.username?' <span class="un">@'+esc(m.username)+'</span>':'')+
+      (m.owner_tg?'<span class="tag">владелец</span>':'<span class="tag">'+st[m.status]+'</span>')+'</span>'+
+    (m.status==='pending'
+      ? '<button class="me on" data-mok="'+m.tg_id+'">Пустить</button><button class="me" data-mno="'+m.tg_id+'">Отклонить</button>'
+      : m.status==='active'
+        ? '<button class="me" data-mno="'+m.tg_id+'">Закрыть</button>'
+        : '<button class="me" data-mok="'+m.tg_id+'">Вернуть</button>')+
+    '</div>').join('')
+    : '<div class="empty">Запросов нет. Человек открывает учет в боте — и появляется здесь.</div>';
+}
+document.getElementById('mlist').onclick=async e=>{
+  const ok=e.target.closest('[data-mok]'), no=e.target.closest('[data-mno]');
+  if(!ok&&!no) return;
+  if(guard()) return;
+  const id=ok?ok.dataset.mok:no.dataset.mno, m=M.find(x=>String(x.tg_id)===id);
+  if(no && m && m.status==='active' && !await ask('Закрыть доступ: '+(m.name||id)+'?')) return;
+  const {error}=await sb.from('members')
+    .update({status:ok?'active':'blocked',decided_at:new Date().toISOString()}).eq('tg_id',id);
+  if(error) return fail(error);
+  tap(18); await loadMembers(); toast(ok?'Доступ открыт':'Доступ закрыт');
+};
 
 /* ======================= МЕЛОЧИ ======================= */
 let toastT;
@@ -967,7 +1081,9 @@ document.getElementById('mode').addEventListener('click',async e=>{
   if(e.target.id==='login') openSheet('authSheet');
   else if(e.target.id==='logout'){
     await sb.auth.signOut(); await refreshAuth();
-    selW=[]; applyLock(); renderAll(); toast('Вышли из учетной записи');
+    selW=[]; M=[]; document.getElementById('gear').classList.remove('dot');
+    try{ await loadAll(); saveCache(); applyLock(); renderAll(); toast('Вышли из учетной записи'); }
+    catch(err){ applyLock(); if(err&&err.gate) closeGate(err.gate); }
   }
 });
 document.getElementById('unlock2').onclick=()=>openSheet('authSheet');
@@ -980,11 +1096,11 @@ document.getElementById('doLogin').onclick=async()=>{
   if(error){ toast(/invalid/i.test(error.message)?'Почта или пароль не подходят':error.message); return; }
   await refreshAuth();
   document.getElementById('pass').value='';
-  if(!isOwner){ toast('Вход выполнен, но прав на запись нет'); }
-  else toast('Полный доступ открыт');
-  const me=S.workers.filter(w=>w.is_me)[0];
-  selW = (!locked&&me)?[me.id]:[];
-  applyLock(); renderAll(); closeSheets();
+  if(!isOwner){ toast('Вход выполнен, но прав на запись нет'); return; }
+  closeSheets();
+  try{ await loadAll(); saveCache(); }catch(_){ toast('Не удалось загрузить данные'); }
+  startApp();
+  toast('Полный доступ открыт');
 };
 document.getElementById('pass').onkeydown=e=>{ if(e.key==='Enter') document.getElementById('doLogin').click(); };
 
@@ -1588,6 +1704,7 @@ function closeSheets(){
   document.querySelectorAll('.sheet.on').forEach(s=>s.classList.remove('on'));
   if(nameDone) endName(null);
   syncBack();
+  if(gated && locked) closeGate(gated);   // передумал входить — снова закрытый экран
 }
 document.getElementById('textClose').onclick=()=>closeSheet('textSheet');
 
@@ -1610,12 +1727,12 @@ document.getElementById('nameInp').onkeydown=e=>{ if(e.key==='Enter') endName(e.
 document.getElementById('scrim').onclick=closeSheets;
 document.getElementById('opCancel').onclick=closeSheets;
 document.getElementById('setClose').onclick=closeSheets;
-document.getElementById('gear').onclick=()=>openSheet('setSheet');
+document.getElementById('gear').onclick=()=>{ openSheet('setSheet'); loadMembers(); };
 document.getElementById('sync').onclick=async()=>{
   const b=document.getElementById('sync');
   b.classList.add('spin'); setTimeout(()=>b.classList.remove('spin'),700);
   try{ await refreshAuth(); await loadAll(); applyLock(); renderAll(); toast('Обновлено'); }
-  catch(e){ toast('Не удалось обновить'); }
+  catch(e){ if(e&&e.gate) closeGate(e.gate); else toast('Не удалось обновить'); }
 };
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeSheets(); });
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) scheduleReload(); });
