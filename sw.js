@@ -1,6 +1,6 @@
 // Служебный воркер: держит оболочку приложения в кэше,
 // чтобы оно открывалось без интернета. Данные кэширует само приложение.
-const CACHE = 'uchet-v11';
+const CACHE = 'uchet-v12';
 const SHELL = [
   './',
   './index.html',
@@ -36,7 +36,7 @@ self.addEventListener('fetch', (e) => {
   // страница: сначала сеть, при её отсутствии — кэш
   if (req.mode === 'navigate') {
     e.respondWith(
-      fetch(req)
+      fetch(req.url, { cache: 'no-cache' })
         .then((r) => {
           const copy = r.clone();
           caches.open(CACHE).then((c) => c.put('./index.html', copy));

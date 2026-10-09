@@ -1819,7 +1819,7 @@ document.getElementById('sync').onclick=async()=>{
   catch(e){ if(e&&e.gate) closeGate(e.gate); else toast('Не удалось обновить'); }
 };
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeSheets(); });
-document.addEventListener('visibilitychange',()=>{ if(!document.hidden) scheduleReload(); });
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ scheduleReload(); checkUpdate(); } });
 
 function openOp(kind,workerId){
   opCtx={kind,workerId};
@@ -2158,6 +2158,24 @@ function tap(ms){
   }catch(e){}
 }
 
+/* ======================= ОБНОВЛЕНИЕ ======================= */
+// GitHub Pages разрешает телефону держать страницу в кэше до 10 минут, а Telegram на iPhone
+// сервис-воркер не запускает. Поэтому сами спрашиваем, не вышла ли версия новее, и перезагружаемся.
+// При каждой выкладке APP_VERSION меняется.
+const APP_VERSION='2026-10-09.7';
+async function checkUpdate(){
+  try{
+    const r=await fetch('index.html?nc='+Date.now(),{cache:'no-store'});
+    const m=(await r.text()).match(/APP_VERSION='([0-9.-]+)'/);
+    if(!m || m[1]===APP_VERSION) return;
+    const key='uchet-upd-'+m[1];
+    if(sessionStorage.getItem(key)) return;   // уже пробовали — не зацикливаемся
+    sessionStorage.setItem(key,'1');
+    // новый адрес — мимо кэша; хвост с данными Telegram сохраняем
+    location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+location.hash);
+  }catch(e){}
+}
+
 /* ======================= СТАРТ ======================= */
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
@@ -2173,6 +2191,7 @@ if('serviceWorker' in navigator){
   document.getElementById('time').value=z(n.getHours())+':'+z(Math.floor(n.getMinutes()/5)*5);
   applyLock(); renderStrip(); renderPreview();
   boot();
+  checkUpdate();
 })();
 </script>
 </body>
