@@ -1050,7 +1050,13 @@ document.getElementById('mlist').onclick=async e=>{
   const {error}=await sb.from('members')
     .update({status:ok?'active':'blocked',decided_at:new Date().toISOString()}).eq('tg_id',id);
   if(error) return fail(error);
-  tap(18); await loadMembers(); toast(ok?'Доступ открыт':'Доступ закрыт');
+  tap(18); await loadMembers();
+  if(!ok){ toast('Доступ закрыт'); return; }
+  // человеку — сообщение от бота, что доступ открыт
+  let sent=false;
+  try{ const {data}=await sb.functions.invoke('tg-access',{body:{notify:id}}); sent=!!(data&&data.ok); }catch(_){}
+  toast(sent ? 'Доступ открыт — бот написал '+((m&&m.name)||'человеку')
+             : 'Доступ открыт, но бот не смог написать — скажи сам');
 };
 
 /* ======================= МЕЛОЧИ ======================= */
