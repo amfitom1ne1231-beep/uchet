@@ -56,13 +56,50 @@
   body.ro .entwrap.open .ent{transform:none}
 
   .tabs{position:relative;display:flex;background:var(--card);border-radius:11px;padding:3px;margin-bottom:18px}
-  .tabs .glide{position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px)/3);
+  .tabs .glide{position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px)/4);
     background:var(--card2);border-radius:9px;box-shadow:0 1px 3px rgba(0,0,0,.6);
     transition:transform .42s var(--spring)}
   .tabs button{position:relative;z-index:1;flex:1;padding:8px 4px;border:none;background:none;
     color:var(--g2);font-family:var(--sans);font-size:14px;font-weight:600;letter-spacing:-.01em;
     cursor:pointer;transition:color .3s}
   .tabs button[aria-selected="true"]{color:var(--w)}
+  .tabs button.hot:after{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;
+    background:var(--w);margin-left:5px;vertical-align:2px;animation:pulse 1.6s infinite}
+
+  /* поле с подписью внутри: пауза и скидка в форме */
+  .field{display:flex;align-items:center;gap:10px;margin-top:10px;background:var(--card2);
+    border-radius:12px;padding-left:14px;border:1px solid transparent}
+  .field:focus-within{border-color:var(--g3)}
+  .field span{font-size:14px;color:var(--g2);flex:0 0 auto;font-family:var(--sans)}
+  .field input{background:none;border:none;text-align:right;padding:13px 14px 13px 0}
+  .field input:focus{border:none}
+
+  /* живая смена: таймер */
+  .lcard{padding:16px 16px 14px}
+  .lhead{display:flex;align-items:center;gap:8px;font-size:15px}
+  .lhead .lmeta{color:var(--g2);font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lcard .live.off{animation:none;opacity:.35}
+  .ltimer{font-family:var(--mono);font-size:52px;font-weight:600;letter-spacing:-.04em;line-height:1.05;
+    margin:14px 0 4px;text-align:center}
+  .lcard.paused .ltimer{color:var(--g2)}
+  .lsum{text-align:center;font-size:13px;color:var(--g2);font-family:var(--mono)}
+  .lsum b{color:var(--w);font-weight:600}
+  .lbtns{display:flex;gap:8px;margin-top:16px}
+  .lbtns .btn{flex:1;padding:14px 8px;font-size:15px}
+  .lcard .rm{width:100%;margin-top:8px}
+  .lgrid{display:flex;gap:10px;margin-top:6px}
+  .lgrid label{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+  .lgrid .cap{margin:8px 0 0}
+  .lgrid input{padding:11px 10px;font-size:15px}
+  .kv{margin-top:14px;border-top:1px solid var(--sep);padding-top:10px;font-size:14px}
+  .kv div{display:flex;justify-content:space-between;gap:12px;padding:4px 0;color:var(--g1)}
+  .kv div b{font-family:var(--mono);font-weight:600;color:var(--w)}
+  .kv div.big{font-size:17px;padding-top:8px}
+  .kv .warn{display:block;margin-top:8px;padding:10px 12px;border-radius:10px;background:var(--card2);color:var(--w)}
+  .lstrip{position:relative;z-index:3;margin:-4px 0 12px;display:flex;flex-direction:column;gap:6px}
+  .lstrip:empty{display:none}
+  .lstrip div{display:flex;align-items:center;gap:8px;justify-content:center;font-size:13.5px;color:var(--g1);cursor:pointer}
+  .lstrip b{font-family:var(--mono);color:var(--w);font-weight:600}
 
   .view{display:none}
   .view.on{display:block;animation:in .42s var(--spring) both}
@@ -479,6 +516,7 @@
   <span class="bsweep"></span>
   <span class="tube t"></span><span class="tube b"></span>
   <span class="spark s1"></span><span class="spark s2"></span>
+  <div class="lstrip" id="liveStrip"></div>
   <div class="bcap">Касса · не роздано</div>
   <div class="bval odo" id="boardVal"></div>
   <div class="bstats" id="boardStats"></div>
@@ -495,6 +533,7 @@
 <div class="tabs" role="tablist">
   <div class="glide" id="glide"></div>
   <button role="tab" data-v="new" aria-selected="true">Смена</button>
+  <button role="tab" data-v="live" aria-selected="false">Таймер</button>
   <button role="tab" data-v="sum" aria-selected="false">Итоги</button>
   <button role="tab" data-v="hist" aria-selected="false">История</button>
 </div>
@@ -517,6 +556,8 @@
         <label><input type="date" id="date"></label>
         <label><input type="time" id="time" step="300"></label>
       </div>
+      <label class="field"><span>Пауза — не оплачивается</span>
+        <input type="text" id="pause" inputmode="decimal" placeholder="мин или ч.мм" autocomplete="off"></label>
     </div>
 
     <div class="fsec">
@@ -530,8 +571,10 @@
       <div class="fhdr"><span class="lbl">Итог</span></div>
       <div class="bigsum"><span class="v num" id="pvTotal">—</span><span class="c">за смену</span></div>
       <div class="subsum" id="pvLine">—</div>
+      <label class="field" style="margin-top:16px"><span>Скидка, $</span>
+        <input type="text" id="discount" inputmode="decimal" placeholder="0" autocomplete="off"></label>
       <input type="text" class="txt" id="note" placeholder="Комментарий к смене — необязательно"
-             autocomplete="off" maxlength="200" style="margin-top:16px">
+             autocomplete="off" maxlength="200" style="margin-top:10px">
       <div class="hint" id="hint"></div>
       <button class="btn" id="save">Записать смену</button>
     </div>
@@ -555,6 +598,20 @@
       <button class="btn sec" id="unlock2">Войти</button>
     </div>
   </div>
+</section>
+
+<section class="view" id="v-live">
+  <div class="group pad w-only" id="liveNew">
+    <span class="lbl">Новая смена</span>
+    <span class="cap">Операторы</span>
+    <div class="chips" id="liveWChips"></div>
+    <button class="btn mt" id="liveStart">Начать смену</button>
+    <div class="note">Время старта пишется в базу, по Камбодже. Можно закрыть приложение или открыть
+      с другого телефона — таймер идёт. Игроков можно добавить по ходу или в конце.</div>
+  </div>
+  <div id="liveList"></div>
+  <div class="group" id="liveEmpty" style="display:none"><div class="empty">
+    <span class="big">Сейчас смен нет</span><span id="liveEmptyHint"></span></div></div>
 </section>
 
 <section class="view" id="v-sum">
@@ -747,7 +804,7 @@ function showText(title,txt){
 }
 
 /* ======================= СОСТОЯНИЕ ======================= */
-let S={workers:[],customers:[],shifts:[],ops:[]};
+let S={workers:[],customers:[],shifts:[],ops:[],live:[]};
 let user=null, isOwner=false, canWrite=false, locked=true;
 let hours=6, selW=[], selC=[], period='m', opCtx=null, openId=null, curTab=0, editId=null, editPaid={};
 let booting=true, openDebt=null;
@@ -763,10 +820,35 @@ const totalFor=(h,d)=> h<=0 ? 0
   : h<=3 ? 100*h
   : (hasFreeHour(d) ? 300+50*(h-4) : 300+50*(h-3));
 const priceOfHour=(i,d)=> i<=3 ? 100 : (hasFreeHour(d) && i===4 ? 0 : 50);
-function calc(h,nw,nc,d){
-  const total=totalFor(h,d), kassa=total/2, pool=total/2;
-  return {total,kassa,perWorker:nw?pool/nw:0,perCustomer:nc?total/nc:0};
+// Скидка в $ вычитается из суммы по тарифу, и уже остаток делится на кассу, операторов и игроков.
+// Пауза не оплачивается: часы — это только игра, тариф идет сквозной.
+function calc(h,nw,nc,d,discount){
+  const full=totalFor(h,d), disc=Math.min(Math.max(Number(discount)||0,0),full);
+  const total=full-disc, kassa=total/2, pool=total/2;
+  return {full,discount:disc,total,kassa,perWorker:nw?pool/nw:0,perCustomer:nc?total/nc:0};
 }
+// Отыгранное время → часы к оплате: остаток 30 минут и больше — вверх, меньше — вниз.
+// Меньше 30 минут за всю смену — 0 часов, такую смену не записываем.
+function paidHours(sec){
+  const min=Math.floor(Math.max(0,sec)/60);
+  return Math.floor(min/60)+(min%60>=30?1:0);
+}
+// Пауза пишется минутами или ч:мм: «90», «1:30», «1.30» — одно и то же.
+// На цифровой клавиатуре iPhone нет двоеточия, поэтому годится и точка/запятая;
+// одна цифра после нее — доли часа: «1,5» = полтора часа.
+function parsePause(v){
+  const s=String(v==null?'':v).trim();
+  let m;
+  if((m=s.match(/^(\d{1,2}):(\d{1,2})$/)) || (m=s.match(/^(\d{1,2})[.,](\d{2})$/))) return (+m[1])*60+(+m[2]);
+  if((m=s.match(/^(\d{1,2})[.,](\d)$/))) return (+m[1])*60+(+m[2])*6;
+  if(/^\d{1,4}$/.test(s)) return +s;
+  return 0;
+}
+function pauseText(min){
+  const h=Math.floor(min/60), m=min%60;
+  return (h?h+' ч':'')+(h&&m?' ':'')+(m?m+' мин':'');
+}
+const pauseInput=min=> min>0 ? Math.floor(min/60)+':'+String(min%60).padStart(2,'0') : '';
 function money(v){
   const r=Math.round(Number(v)*100)/100;
   const s=String(Math.abs(r)).replace('.',',').split(',');
@@ -776,18 +858,49 @@ const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').rep
 function hourWord(n){const a=n%10,b=n%100;
   if(a===1&&b!==11)return 'час'; if(a>=2&&a<=4&&(b<12||b>14))return 'часа'; return 'часов';}
 const hhmm=t=> t?String(t).slice(0,5):'';
-function endTime(t,h){
+// конец смены: начало + часы игры + пауза (минутами)
+function endTime(t,h,pauseMin){
   if(!t) return '';
-  const p=hhmm(t).split(':'), m=(+p[0])*60+(+p[1])+h*60;
+  const p=hhmm(t).split(':'), m=(+p[0])*60+(+p[1])+h*60+(pauseMin||0);
   const d=Math.floor(m/1440), mm=((m%1440)+1440)%1440;
   return String(Math.floor(mm/60)).padStart(2,'0')+':'+String(mm%60).padStart(2,'0')+(d?' +'+d+'д':'');
 }
+const shiftEnd=s=> endTime(s.start_time,s.hours,s.pause_min);
 const MON=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
-const today=()=>{const d=new Date(),z=n=>String(n).padStart(2,'0');
-  return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate());};
+const dayText=ds=>{ const p=String(ds).split('-'); return Number(p[2])+' '+MON[Number(p[1])-1]; };
+
+// Время учета — по Камбодже (Asia/Phnom_Penh, UTC+7 круглый год, без перевода часов),
+// как бы ни был настроен телефон. Часы сверяем с сервером, чтобы таймеры шли одинаково.
+let clockOff=0;
+const nowMs=()=>Date.now()+clockOff;
+const KH_OFF=7*3600e3;
+const z2=n=>String(n).padStart(2,'0');
+function khParts(ms){
+  const d=new Date(ms+KH_OFF);
+  return { d:d.getUTCFullYear()+'-'+z2(d.getUTCMonth()+1)+'-'+z2(d.getUTCDate()),
+           t:z2(d.getUTCHours())+':'+z2(d.getUTCMinutes()) };
+}
+const khToMs=(d,t)=> Date.parse(d+'T'+(t||'00:00')+':00Z')-KH_OFF;
+const today=()=>khParts(nowMs()).d;
 function inPeriod(ds){
   if(period==='a') return true;
-  return (new Date()-new Date(ds+'T00:00'))/86400000 <= (period==='w'?7:30);
+  return (Date.parse(today()+'T00:00Z')-Date.parse(ds+'T00:00Z'))/86400000 <= (period==='w'?7:30);
+}
+
+// Живая смена: отыграно (сек) = от старта до конца/сейчас минус все паузы, включая идущую
+function livePlayed(l,now){
+  const end=l.finished_at ? Date.parse(l.finished_at) : now;
+  const cur=(l.paused_at && !l.finished_at) ? Math.max(0,now-Date.parse(l.paused_at)) : 0;
+  return Math.max(0,(end-Date.parse(l.started_at)-cur)/1000-(l.pause_sec||0));
+}
+const clock=sec=>{ sec=Math.floor(sec); return Math.floor(sec/3600)+':'+z2(Math.floor(sec%3600/60))+':'+z2(sec%60); };
+const clockHM=sec=>{ const m=Math.floor(sec/60); return Math.floor(m/60)+':'+z2(m%60); };
+// итог живой смены: часы к оплате, дата по Камбодже и суммы после скидки
+function liveSummary(l,now){
+  const s=Date.parse(l.started_at), e=l.finished_at ? Date.parse(l.finished_at) : now;
+  const played=livePlayed(l,now), h=paidHours(played), d=khParts(s).d;
+  const c=calc(h,(l.worker_ids||[]).length,(l.customer_ids||[]).length,d,l.discount);
+  return {s,e,played,h,d,c,pauseMin:Math.round((l.pause_sec||0)/60)};
 }
 const parseAmt=v=>{const n=Number(String(v).replace(',','.').replace(/\s/g,''));return isFinite(n)?n:0;};
 const wName=id=>{const w=S.workers.find(x=>x.id===id);return w?w.name:'—';};
@@ -822,6 +935,7 @@ function applyPending(){
     if(q.t==='shift'){
       S.shifts.unshift({ id:q.id, pending:true, note:q.row.note,
         work_date:q.row.work_date, start_time:q.row.start_time, hours:q.row.hours,
+        pause_min:q.row.pause_min||0, discount:q.row.discount||0,
         total:q.row.total, kassa:q.row.kassa,
         per_worker:q.row.per_worker, per_customer:q.row.per_customer,
         workerIds:q.workers.slice(), customerIds:q.customers.slice(),
@@ -889,23 +1003,30 @@ window.addEventListener('offline', renderOffbar);
 // Учет закрыт от посторонних: база отдает данные только владельцу (вход по почте),
 // а тем, кого он пустил через Telegram, — функция tg-access по подписи Telegram.
 const gateErr=st=>Object.assign(new Error('gate'),{gate:st});
+// часы сервера: t0/t1 — когда ушел запрос и пришел ответ
+const syncClock=(serverIso,t0,t1)=>{ const s=Date.parse(serverIso); if(s) clockOff=s-(t0+t1)/2; };
 async function fetchAll(){
   if(canWrite || (user && !online())){
+    const t0=Date.now();
+    sb.rpc('live_now').then(r=>{ if(r.data) syncClock(r.data,t0,Date.now()); }).catch(function(){});
     const r=await Promise.all([
       sb.from('workers').select('*').order('created_at'),
       sb.from('customers').select('*').order('created_at'),
       sb.from('shifts').select('*').order('work_date',{ascending:false}).order('created_at',{ascending:false}),
       sb.from('shift_workers').select('*'),
       sb.from('shift_customers').select('*'),
-      sb.from('ops').select('*').order('op_date',{ascending:false})
+      sb.from('ops').select('*').order('op_date',{ascending:false}),
+      sb.from('live_shifts').select('*').order('started_at')
     ]);
     const err=r.find(x=>x.error);
     if(err) throw err.error;
     return r.map(x=>x.data||[]);
   }
   if(!TG) throw gateErr({status:'closed'});
+  const t0=Date.now();
   const {data,error}=await sb.functions.invoke('tg-access',{body:{initData:TG.initData}});
   if(error) throw error;
+  if(data && data.now) syncClock(data.now,t0,Date.now());
   if(!data || data.status==='error') throw new Error((data&&data.error)||'tg-access');
   if(!data.ok) throw gateErr(data);
   // владелец дал правку — входим под учеткой этого Telegram; забрал — выходим из нее
@@ -916,15 +1037,17 @@ async function fetchAll(){
     await refreshAuth();
   }
   const d=data.data;
-  return [d.workers,d.customers,d.shifts,d.shift_workers,d.shift_customers,d.ops];
+  return [d.workers,d.customers,d.shifts,d.shift_workers,d.shift_customers,d.ops,d.live_shifts||[]];
 }
 async function loadAll(){
-  const [w,c,s,sw,sc,o]=await fetchAll();
+  const [w,c,s,sw,sc,o,lv]=await fetchAll();
   S.workers=w; S.customers=c;
+  S.live=(lv||[]).map(x=>Object.assign({},x,{discount:Number(x.discount)||0}));
   S.ops=o.map(x=>Object.assign({},x,{amount:Number(x.amount)}));
   S.shifts=s.map(x=>Object.assign({},x,{
     total:Number(x.total), kassa:Number(x.kassa),
     per_worker:Number(x.per_worker), per_customer:Number(x.per_customer),
+    pause_min:Number(x.pause_min)||0, discount:Number(x.discount)||0,
     workerIds:sw.filter(r=>r.shift_id===x.id).map(r=>r.worker_id),
     custLinks:sc.filter(r=>r.shift_id===x.id)
       .map(r=>({id:r.customer_id,paid:r.paid===true,paid_at:r.paid_at||null,
@@ -987,6 +1110,8 @@ function startApp(){
   flushQueue();
   if(!started){
     started=true; initReveal();
+    // кто смотрит через Telegram без правки, не подписан на изменения базы — освежаем раз в минуту
+    setInterval(function(){ if(!document.hidden && !canWrite && TG) scheduleReload(); },60000);
     try{
       sb.channel('uchet')
         .on('postgres_changes',{event:'*',schema:'public'},scheduleReload)
@@ -1007,7 +1132,7 @@ const GATE={
 // посторонним — ни данных на экране, ни копии в памяти телефона
 function closeGate(st){
   gated=st;
-  S={workers:[],customers:[],shifts:[],ops:[]};
+  S={workers:[],customers:[],shifts:[],ops:[],live:[]};
   safeStorage.removeItem(CKEY);
   renderAll();
   const g=GATE[st.status]||GATE.closed, boot=document.getElementById('boot');
@@ -1149,8 +1274,8 @@ document.getElementById('doLogin').onclick=async()=>{
 document.getElementById('pass').onkeydown=e=>{ if(e.key==='Enter') document.getElementById('doLogin').click(); };
 
 /* ======================= ВКЛАДКИ ======================= */
-const scrollMem={new:0,sum:0,hist:0};
-const tabNames=['new','sum','hist'];
+const scrollMem={new:0,live:0,sum:0,hist:0};
+const tabNames=['new','live','sum','hist'];
 window.addEventListener('scroll',function(){ scrollMem[tabNames[curTab]]=window.scrollY; },{passive:true});
 document.querySelector('.tabs').addEventListener('click',e=>{
   const b=e.target.closest('button[data-v]'); if(!b) return;
@@ -1192,17 +1317,23 @@ function renderChips(){
   document.getElementById('cchips').innerHTML = c.length
     ? c.map(x=>chipHtml(x,selC.indexOf(x.id)>=0)).join('') : '<div class="empty">Список пуст</div>';
 }
+const formPause=()=>parsePause(document.getElementById('pause').value);
+function clearExtras(){ document.getElementById('pause').value=''; document.getElementById('discount').value=''; }
+const formDiscount=()=>Math.max(0,parseAmt(document.getElementById('discount').value));
 function renderPreview(){
-  const c=calc(hours,selW.length,selC.length,document.getElementById('date').value);
+  const c=calc(hours,selW.length,selC.length,document.getElementById('date').value,formDiscount());
+  const pm=formPause();
   document.getElementById('pvTotal').textContent=money(c.total);
   document.getElementById('pvLine').innerHTML =
+    (c.discount ? 'по тарифу '+money(c.full)+' − скидка <b>'+money(c.discount)+'</b><br>' : '') +
     'в кассу <b>'+money(c.kassa)+'</b>' +
     (selW.length ? ' · рабочим по <b>'+money(c.perWorker)+'</b>' : '') +
     (selC.length>1 ? ' · с кастомера <b>'+money(c.perCustomer)+'</b>' : '');
   document.getElementById('hval').textContent=hours;
   document.getElementById('hword').textContent=hourWord(hours);
   const t=document.getElementById('time').value;
-  document.getElementById('window').innerHTML=t?'<b>'+t+' → '+endTime(t,hours)+'</b>':'время не указано';
+  document.getElementById('window').innerHTML=(t?'<b>'+t+' → '+endTime(t,hours,pm)+'</b>':'время не указано')+
+    (pm?' · пауза '+pauseText(pm):'');
   document.getElementById('save').disabled=!(hours>=1&&selW.length>=1&&document.getElementById('date').value);
   document.getElementById('save').textContent = editId ? 'Сохранить изменения' : 'Записать смену';
   document.getElementById('hint').textContent = !document.getElementById('date').value ? 'Поставь дату'
@@ -1305,7 +1436,7 @@ function renderSummary(){
           const amt=l&&l.amount!=null?l.amount:g.per_customer;
           const d=String(g.work_date).split('-');
           const others=(g.custLinks||[]).filter(x=>x.id!==id).map(x=>cName(x.id));
-          const win=g.start_time?hhmm(g.start_time)+'–'+endTime(g.start_time,g.hours):'';
+          const win=g.start_time?hhmm(g.start_time)+'–'+shiftEnd(g):'';
           return '<div class="grow"><div class="gi">'+
             '<div class="gd">'+Number(d[2])+' '+MON[Number(d[1])-1]+
               ' · '+g.hours+' '+hourWord(g.hours)+(win?' · '+win:'')+'</div>'+
@@ -1437,11 +1568,15 @@ function entryHtml(e){
   let cls='',top,sub,sum,detail;
   if(e.kind==='shift'){
     top=e.hours+' '+hourWord(e.hours)+' · '+e.workerIds.map(wName).map(esc).join(', ');
-    sub=(e.start_time?hhmm(e.start_time)+'–'+endTime(e.start_time,e.hours):'без времени')+' · '+
+    const pm=e.pause_min||0, disc=Number(e.discount)||0;
+    sub=(e.start_time?hhmm(e.start_time)+'–'+shiftEnd(e):'без времени')+
+        (pm?' · пауза '+pauseText(pm):'')+(disc?' · скидка '+money(disc):'')+' · '+
         (e.customerIds.length?e.customerIds.map(cName).map(esc).join(' + '):'без кастомера')+
         (e.note?' · '+esc(e.note):'');
     sum=money(e.total);
-    detail='<div>в кассу — '+money(e.kassa)+'</div><div>рабочим — по '+money(e.per_worker)+'</div>'+
+    detail=(pm?'<div>пауза — '+pauseText(pm)+', не оплачивается</div>':'')+
+           (disc?'<div>скидка — '+money(disc)+' (по тарифу '+money(e.total+disc)+')</div>':'')+
+           '<div>в кассу — '+money(e.kassa)+'</div><div>рабочим — по '+money(e.per_worker)+'</div>'+
            (e.custLinks||[]).map(function(l){
              const amt=l.amount!=null?l.amount:e.per_customer;
              return '<div>'+esc(cName(l.id))+' — '+money(amt)+
@@ -1514,7 +1649,7 @@ function renderLists(){
     : '<div class="empty">Пусто</div>';
 }
 function renderAll(){ renderStrip(); renderChips(); renderPreview(); renderSummary();
-  renderList(); renderLists(); applyLock(); }
+  renderList(); renderLists(); applyLock(); renderLive(); }
 
 /* ======================= ДЕЙСТВИЯ ======================= */
 function bump(){
@@ -1525,6 +1660,8 @@ function bump(){
 document.getElementById('minus').onclick=()=>{ if(hours>1){hours--;bump();} };
 document.getElementById('plus').onclick =()=>{ if(hours<24){hours++;bump();} };
 document.getElementById('time').oninput=renderPreview;
+document.getElementById('pause').oninput=renderPreview;
+document.getElementById('discount').oninput=renderPreview;
 document.getElementById('date').oninput=function(){ renderStrip(); renderPreview(); };
 function toggle(a,n){ const i=a.indexOf(n); if(i<0) a.push(n); else a.splice(i,1); }
 document.getElementById('wchips').onclick=e=>{ const b=e.target.closest('.chip'); if(!b||guard())return;
@@ -1535,12 +1672,13 @@ document.getElementById('cchips').onclick=e=>{ const b=e.target.closest('.chip')
 document.getElementById('save').onclick=async function(){
   if(guard())return;
   const btn=this, wasEdit=!!editId;
-  const c=calc(hours,selW.length,selC.length,document.getElementById('date').value);
+  const c=calc(hours,selW.length,selC.length,document.getElementById('date').value,formDiscount());
   const row={
     work_date:document.getElementById('date').value,
     start_time:document.getElementById('time').value||null,
     hours:hours, total:c.total, kassa:c.kassa,
     per_worker:c.perWorker, per_customer:c.perCustomer,
+    pause_min:formPause(), discount:c.discount,
     note:document.getElementById('note').value.trim()||null
   };
   btn.disabled=true;
@@ -1548,7 +1686,7 @@ document.getElementById('save').onclick=async function(){
   if(!online()){
     if(wasEdit){ btn.disabled=false; toast('Правка недоступна без интернета'); return; }
     enqueue({t:'shift',row:row,workers:selW.slice(),customers:selC.slice()});
-    selC=[]; document.getElementById('note').value='';
+    selC=[]; document.getElementById('note').value=''; clearExtras();
     S.shifts=[]; S.ops=[];
     loadCache(); applyPending(); renderAll(); renderOffbar();
     tap(18); btn.disabled=false; btn.textContent='Сохранено локально ✓';
@@ -1589,7 +1727,7 @@ document.getElementById('save').onclick=async function(){
   // уведомление в Telegram — не мешает записи, если не сработает
   sb.functions.invoke('notify-shift',{body:{shift_id:sid,mode:wasEdit?'edit':'new'}}).catch(function(){});
 
-  if(wasEdit) stopEdit(); else { selC=[]; document.getElementById('note').value=''; }
+  if(wasEdit) stopEdit(); else { selC=[]; document.getElementById('note').value=''; clearExtras(); }
   await loadAll(); renderAll();
   tap(18);
   btn.disabled=false;
@@ -1721,9 +1859,10 @@ function reportText(){
   lines.push('');
   entries().slice(0,60).forEach(e=>{
     const d=String(e.date).split('-'), day=Number(d[2])+' '+MON[Number(d[1])-1];
-    if(e.kind==='shift') lines.push(day+(e.start_time?' '+hhmm(e.start_time):'')+' — '+e.hours+'ч, '+
+    if(e.kind==='shift') lines.push(day+(e.start_time?' '+hhmm(e.start_time):'')+' — '+e.hours+'ч'+
+      (e.pause_min?' (пауза '+pauseText(e.pause_min)+')':'')+', '+
       e.workerIds.map(wName).join('/')+(e.customerIds.length?' ('+e.customerIds.map(cName).join('+')+')':'')+
-      ' — '+money(e.total));
+      ' — '+money(e.total)+(Number(e.discount)?' (скидка '+money(e.discount)+')':''));
     else if(e.kind==='payout') lines.push(day+' — выплата '+wName(e.worker_id)+' '+money(e.amount));
     else if(e.kind==='income') lines.push(day+' — оплата от игроков '+money(e.amount)+
       ' (операторам '+money(e.amount/2)+')'+(e.note?' — '+e.note:''));
@@ -1964,14 +2103,14 @@ if(TG){
 function csvText(){
   const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
   const rows=[['Тип','Дата','Начало','Конец','Часы','Рабочие','Кастомеры',
-               'Сумма','В кассу','Каждому рабочему','С кастомера','Оплата','Заметка']];
+               'Сумма','В кассу','Каждому рабочему','С кастомера','Оплата','Заметка','Пауза, мин','Скидка']];
   entries().slice().reverse().forEach(e=>{
     if(e.kind==='shift') rows.push(['Смена',e.date,hhmm(e.start_time),
-      e.start_time?endTime(e.start_time,e.hours):'',e.hours,
+      e.start_time?shiftEnd(e):'',e.hours,
       e.workerIds.map(wName).join(' / '),e.customerIds.map(cName).join(' + '),
       e.total,e.kassa,e.per_worker,e.per_customer,
       (e.custLinks||[]).map(l=>cName(l.id)+': '+(l.paid?'оплачено':'в долг')).join('; '),
-      e.note||'']);
+      e.note||'',e.pause_min||0,Number(e.discount)||0]);
     else if(e.kind==='payout') rows.push(['Выплата',e.date,'','','',wName(e.worker_id),'',-e.amount,'','','','',e.note||'']);
     else if(e.kind==='income') rows.push(['Оплата от игроков',e.date,'','','','','',-e.amount,-e.amount/2,'','','',e.note||'']);
     else if(e.kind==='carry') rows.push(['Долг до начала учета',e.date,'','','','','',e.amount,e.amount/2,'','','',e.note||'']);
@@ -2063,6 +2202,8 @@ function startEdit(id){
   selW=sh.workerIds.slice();
   selC=(sh.custLinks||[]).map(l=>l.id);
   document.getElementById('note').value=sh.note||'';
+  document.getElementById('pause').value=pauseInput(sh.pause_min||0);
+  document.getElementById('discount').value=Number(sh.discount)>0 ? String(Number(sh.discount)).replace('.',',') : '';
   const p=String(sh.work_date).split('-');
   document.getElementById('editWhen').textContent =
     'от '+Number(p[2])+' '+MON[Number(p[1])-1]+(sh.start_time?', '+hhmm(sh.start_time):'');
@@ -2074,7 +2215,7 @@ function startEdit(id){
 function stopEdit(){
   editId=null;
   document.getElementById('editBar').style.display='none';
-  document.getElementById('note').value='';
+  document.getElementById('note').value=''; clearExtras();
   selC=[];
   renderChips(); renderPreview();
 }
@@ -2158,11 +2299,230 @@ function tap(ms){
   }catch(e){}
 }
 
+/* ======================= ТАЙМЕР: ЖИВАЯ СМЕНА ======================= */
+// Живые смены лежат в базе (live_shifts): старт, паузы и конец ставит сервер своим временем,
+// поэтому таймер верный после перезагрузки, на другом телефоне и при сбитых часах.
+// Смен может идти несколько — у каждой своя карточка.
+let liveW=null;   // операторы для новой смены
+const liveRows=()=>(S.live||[]).slice().sort((a,b)=>Date.parse(a.started_at)-Date.parse(b.started_at));
+const liveWorkers=l=>(l.worker_ids||[]).map(wName).map(esc).join(', ')||'—';
+
+function liveCustHtml(l){
+  const ids=l.customer_ids||[];
+  if(locked) return '<div class="lsum" style="text-align:left">'+(ids.length?ids.map(cName).map(esc).join(' + '):'игроки не выбраны')+'</div>';
+  const list=S.customers.filter(c=>c.active||ids.indexOf(c.id)>=0);
+  return '<div class="chips">'+(list.length ? list.map(c=>'<button class="chip" data-lcust="'+l.id+'|'+c.id+'" aria-pressed="'+
+    (ids.indexOf(c.id)>=0)+'">'+esc(c.name)+'</button>').join('') : '<div class="empty">Список кастомеров пуст</div>')+'</div>';
+}
+function liveCalcHtml(l){
+  const x=liveSummary(l,nowMs()), c=x.c, nw=(l.worker_ids||[]).length, nc=(l.customer_ids||[]).length;
+  const sp=khParts(x.s), ep=khParts(x.e), row=(k,v,cls)=>'<div'+(cls?' class="'+cls+'"':'')+'><span>'+k+'</span><b>'+v+'</b></div>';
+  return '<div class="kv">'+
+    row('Начало',dayText(sp.d)+' '+sp.t)+row('Конец',dayText(ep.d)+' '+ep.t)+
+    row('Отыграно',clockHM(x.played))+
+    (x.pauseMin?row('Пауза'+(l.pauses>1?' ('+l.pauses+')':''),pauseText(x.pauseMin)):'')+
+    row('К оплате',x.h+' '+hourWord(x.h))+
+    (c.discount?row('По тарифу',money(c.full))+row('Скидка','−'+money(c.discount)):'')+
+    row('Сумма',money(c.total),'big')+
+    row('В кассу',money(c.kassa))+
+    (nw?row(nw>1?'Каждому оператору':'Оператору',money(c.perWorker)):'')+
+    (nc?row(nc>1?'Каждому игроку':'Игроку',money(c.perCustomer)):'')+
+    (x.h<1?'<span class="warn">Меньше 30 минут — записывать нечего. Вернись к смене или отмени её.</span>'
+      : !nc?'<span class="warn">Игроки не выбраны — смена запишется без привязки к игроку.</span>':'')+
+  '</div>';
+}
+function liveCardHtml(l){
+  const ws=liveWorkers(l);
+  if(l.finished_at){
+    const sp=khParts(Date.parse(l.started_at)), ep=khParts(Date.parse(l.finished_at));
+    return '<div class="group lcard fin" data-live="'+l.id+'">'+
+      '<div class="lhead"><b>Смена закончена</b><span class="lmeta">'+ws+' · ждёт сохранения</span></div>'+
+      (locked ? '' :
+        '<div class="lgrid">'+
+          '<label><span class="cap">Начало</span><input type="date" data-lf="sd" value="'+sp.d+'"><input type="time" data-lf="st" value="'+sp.t+'"></label>'+
+          '<label><span class="cap">Конец</span><input type="date" data-lf="ed" value="'+ep.d+'"><input type="time" data-lf="et" value="'+ep.t+'"></label>'+
+        '</div>'+
+        '<label class="field"><span>Пауза, ч:мм</span><input type="text" data-lf="pause" inputmode="decimal" placeholder="0:00" value="'+
+          pauseInput(Math.round((l.pause_sec||0)/60))+'"></label>'+
+        '<label class="field"><span>Скидка, $</span><input type="text" data-lf="disc" inputmode="decimal" placeholder="0" value="'+
+          (Number(l.discount)?String(Number(l.discount)).replace('.',','):'')+'"></label>')+
+      '<span class="cap">Игроки</span>'+liveCustHtml(l)+
+      (locked ? (l.note?'<div class="lsum" style="text-align:left;margin-top:8px">'+esc(l.note)+'</div>':'')
+        : '<input type="text" class="txt" data-lf="note" placeholder="Комментарий — необязательно" maxlength="200" value="'+
+          esc(l.note||'')+'" style="margin-top:14px">')+
+      '<div data-lcalc="'+l.id+'">'+liveCalcHtml(l)+'</div>'+
+      '<div class="w-only">'+
+        '<button class="btn mt" data-lsave="'+l.id+'">Сохранить в историю</button>'+
+        '<button class="btn sec mt" data-lact="unfinish" data-id="'+l.id+'">Вернуться к смене</button>'+
+        '<button class="rm" data-ldrop="'+l.id+'">Отменить смену без записи</button></div>'+
+    '</div>';
+  }
+  const paused=!!l.paused_at;
+  return '<div class="group lcard'+(paused?' paused':'')+'" data-live="'+l.id+'">'+
+    '<div class="lhead"><span class="live'+(paused?' off':'')+'"></span><b>'+(paused?'Пауза':'Идёт смена')+'</b>'+
+      '<span class="lmeta">с '+khParts(Date.parse(l.started_at)).t+' · '+ws+'</span></div>'+
+    '<div class="ltimer" data-tick="'+l.id+'">'+clock(livePlayed(l,nowMs()))+'</div>'+
+    '<div class="lsum" data-tsum="'+l.id+'"></div>'+
+    '<span class="cap">Игроки'+(locked?'':' — можно добавить по ходу или в конце')+'</span>'+liveCustHtml(l)+
+    '<div class="lbtns w-only">'+
+      '<button class="btn sec" data-lact="'+(paused?'resume':'pause')+'" data-id="'+l.id+'">'+(paused?'Продолжить':'Пауза')+'</button>'+
+      '<button class="btn" data-lact="finish" data-id="'+l.id+'">Закончить смену</button></div>'+
+    '<button class="rm w-only" data-ldrop="'+l.id+'">Отменить смену без записи</button>'+
+  '</div>';
+}
+const liveSig=l=>JSON.stringify(l)+'|'+locked+'|'+S.customers.map(c=>c.id+c.name+c.active).join()+'|'+S.workers.map(w=>w.id+w.name).join();
+function renderLive(){
+  if(liveW===null){ const me=S.workers.filter(w=>w.is_me&&w.active)[0]; liveW=me?[me.id]:[]; }
+  liveW=liveW.filter(id=>S.workers.some(w=>w.id===id&&w.active));
+  const aw=S.workers.filter(w=>w.active);
+  document.getElementById('liveWChips').innerHTML = aw.length
+    ? aw.map(w=>'<button class="chip" data-lw="'+w.id+'" aria-pressed="'+(liveW.indexOf(w.id)>=0)+'">'+esc(w.name)+'</button>').join('')
+    : '<div class="empty">Добавь операторов в ⚙</div>';
+  document.getElementById('liveStart').disabled=!liveW.length;
+
+  // карточки обновляем по одной и не трогаем ту, где человек сейчас печатает
+  const host=document.getElementById('liveList'), rows=liveRows();
+  host.querySelectorAll('[data-live]').forEach(el=>{ if(!rows.some(l=>l.id===el.dataset.live)) el.remove(); });
+  rows.forEach(function(l){
+    let el=host.querySelector('[data-live="'+l.id+'"]');
+    const sig=liveSig(l);
+    if(el && el.dataset.sig===sig) return;
+    const a=document.activeElement;
+    if(el && a && el.contains(a) && /INPUT|TEXTAREA/.test(a.tagName)) return;
+    const tmp=document.createElement('div'); tmp.innerHTML=liveCardHtml(l);
+    const fresh=tmp.firstChild; fresh.dataset.sig=sig;
+    if(el) el.replaceWith(fresh); else host.appendChild(fresh);
+  });
+  document.getElementById('liveEmpty').style.display=rows.length?'none':'block';
+  document.getElementById('liveEmptyHint').textContent = locked ? 'Когда начнётся смена, здесь пойдёт таймер.' : 'Отметь операторов и нажми «Начать смену».';
+  tick();
+}
+// раз в секунду: таймеры, текущая сумма и строка на афише — без перерисовки карточек
+function tick(){
+  const now=nowMs(), rows=liveRows();
+  rows.forEach(function(l){
+    const t=document.querySelector('[data-tick="'+l.id+'"]');
+    if(t) t.textContent=clock(livePlayed(l,now));
+    const sm=document.querySelector('[data-tsum="'+l.id+'"]');
+    if(sm){
+      const x=liveSummary(l,now);
+      sm.innerHTML='к оплате сейчас <b>'+x.h+' '+hourWord(x.h)+' · '+money(x.c.total)+'</b>'+
+        ((l.pause_sec||l.paused_at)?' · пауза '+clockHM((l.pause_sec||0)+(l.paused_at?Math.max(0,now-Date.parse(l.paused_at))/1000:0)):'');
+    }
+  });
+  document.getElementById('liveStrip').innerHTML=rows.map(function(l){
+    const ws=liveWorkers(l);
+    if(l.finished_at) return '<div data-golive="1">Смена закончена · ждёт сохранения · '+ws+'</div>';
+    return '<div data-golive="1"><span class="live'+(l.paused_at?' off':'')+'"></span>'+(l.paused_at?'Пауза':'Идёт смена')+
+      ' · <b>'+clock(livePlayed(l,now))+'</b> · '+ws+'</div>';
+  }).join('');
+  document.querySelector('.tabs button[data-v="live"]').classList.toggle('hot',rows.some(l=>!l.finished_at));
+}
+setInterval(tick,1000);
+document.getElementById('liveStrip').addEventListener('click',()=>goTab('live'));
+
+function liveReady(){
+  if(guard()) return false;
+  if(!online()){ toast('Нужен интернет'); return false; }
+  return true;
+}
+function putLive(row){
+  if(!row || !row.id) return;
+  row.discount=Number(row.discount)||0;
+  const i=(S.live||[]).findIndex(x=>x.id===row.id);
+  if(i>=0) S.live[i]=row; else (S.live=S.live||[]).push(row);
+}
+document.getElementById('liveWChips').onclick=e=>{
+  const b=e.target.closest('[data-lw]'); if(!b||guard()) return;
+  tap(8); toggle(liveW,b.dataset.lw); renderLive();
+};
+document.getElementById('liveStart').onclick=async function(){
+  if(!liveReady()) return;
+  if(!liveW.length){ toast('Отметь операторов'); return; }
+  this.disabled=true;
+  const {data,error}=await sb.from('live_shifts').insert({worker_ids:liveW.slice()}).select().single();
+  this.disabled=false;
+  if(error) return fail(error,'Смена не началась');
+  putLive(data); tap(18); renderLive();
+  toast('Смена началась · '+khParts(Date.parse(data.started_at)).t);
+};
+document.getElementById('liveList').addEventListener('click',async e=>{
+  const act=e.target.closest('[data-lact]'), cust=e.target.closest('[data-lcust]'),
+        save=e.target.closest('[data-lsave]'), drop=e.target.closest('[data-ldrop]');
+  if(act){
+    if(!liveReady()) return;
+    act.disabled=true;
+    const {data,error}=await sb.rpc('live_action',{p_id:act.dataset.id,p_action:act.dataset.lact});
+    act.disabled=false;
+    if(error) return fail(error,'Не получилось');
+    if(data && data.id) putLive(data); else await loadAll();   // кто-то успел раньше с другого телефона
+    tap(act.dataset.lact==='finish'?18:8); renderLive();
+    return;
+  }
+  if(cust){
+    if(guard()) return;
+    const [id,cid]=cust.dataset.lcust.split('|'), l=(S.live||[]).find(x=>x.id===id); if(!l) return;
+    const ids=(l.customer_ids||[]).slice(), i=ids.indexOf(cid);
+    if(i<0) ids.push(cid); else ids.splice(i,1);
+    tap(8);
+    const {data,error}=await sb.from('live_shifts').update({customer_ids:ids}).eq('id',id).select().single();
+    if(error) return fail(error,'Игроки не сохранились');
+    putLive(data); renderLive();
+    return;
+  }
+  if(save) return liveSave(save.dataset.lsave, save);
+  if(drop){
+    if(!liveReady()) return;
+    if(!await ask('Отменить смену без записи? Таймер пропадёт, в историю ничего не попадёт.')) return;
+    const {error}=await sb.from('live_shifts').delete().eq('id',drop.dataset.ldrop);
+    if(error) return fail(error,'Не удалилось');
+    S.live=(S.live||[]).filter(x=>x.id!==drop.dataset.ldrop); renderLive(); toast('Смена отменена');
+  }
+});
+// правка итога: время, пауза, скидка, комментарий — пишем в базу и пересчитываем
+document.getElementById('liveList').addEventListener('change',async e=>{
+  const f=e.target.closest('[data-lf]'); if(!f) return;
+  const card=f.closest('[data-live]'), id=card.dataset.live, l=(S.live||[]).find(x=>x.id===id);
+  if(!l || !liveReady()) return;
+  const v=k=>card.querySelector('[data-lf="'+k+'"]').value;
+  const sp=khParts(Date.parse(l.started_at)), ep=khParts(Date.parse(l.finished_at));
+  // время трогаем, только если его поменяли: иначе сохраняем секунды как были
+  const s=(v('sd')===sp.d&&v('st')===sp.t) ? Date.parse(l.started_at) : khToMs(v('sd'),v('st'));
+  const en=(v('ed')===ep.d&&v('et')===ep.t) ? Date.parse(l.finished_at) : khToMs(v('ed'),v('et'));
+  if(!(en>s)){ toast('Конец должен быть позже начала'); card.dataset.sig=''; renderLive(); return; }
+  const patch={ started_at:new Date(s).toISOString(), finished_at:new Date(en).toISOString(),
+    pause_sec:parsePause(v('pause'))*60, discount:Math.max(0,parseAmt(v('disc'))), note:v('note').trim()||null };
+  const {data,error}=await sb.from('live_shifts').update(patch).eq('id',id).select().single();
+  if(error) return fail(error,'Не сохранилось');
+  putLive(data);
+  card.querySelector('[data-lcalc]').innerHTML=liveCalcHtml(data);
+  card.dataset.sig=liveSig(data);
+});
+async function liveSave(id,btn){
+  const l=(S.live||[]).find(x=>x.id===id);
+  if(!l || !liveReady()) return;
+  const x=liveSummary(l,nowMs()), ws=l.worker_ids||[], cs=l.customer_ids||[];
+  if(!ws.length){ toast('В смене нет операторов'); return; }
+  if(x.h<1){ toast('Меньше 30 минут — записывать нечего'); return; }
+  const sp=khParts(x.s);
+  const shift={ work_date:sp.d, start_time:sp.t, hours:x.h, total:x.c.total, kassa:x.c.kassa,
+    per_worker:x.c.perWorker, per_customer:x.c.perCustomer, pause_min:x.pauseMin, discount:x.c.discount, note:l.note||'' };
+  btn.disabled=true;
+  const {data:sid,error}=await sb.rpc('save_live_shift',{p_live:id,p_shift:shift,p_workers:ws,p_customers:cs});
+  btn.disabled=false;
+  if(error) return fail(error,'Не записалось');
+  // уведомление в Telegram — только сейчас, при записи в историю
+  sb.functions.invoke('notify-shift',{body:{shift_id:sid,mode:'new'}}).catch(function(){});
+  S.live=(S.live||[]).filter(r=>r.id!==id);
+  tap(18); await loadAll(); renderAll();
+  toast('Смена на '+money(x.c.total)+' записана в историю');
+}
+
 /* ======================= ОБНОВЛЕНИЕ ======================= */
 // GitHub Pages разрешает телефону держать страницу в кэше до 10 минут, а Telegram на iPhone
 // сервис-воркер не запускает. Поэтому сами спрашиваем, не вышла ли версия новее, и перезагружаемся.
 // При каждой выкладке APP_VERSION меняется.
-const APP_VERSION='2026-10-09.7';
+const APP_VERSION='2026-10-15.1';
 async function checkUpdate(){
   try{
     const r=await fetch('index.html?nc='+Date.now(),{cache:'no-store'});
@@ -2184,11 +2544,11 @@ if('serviceWorker' in navigator){
 }
 
 (function init(){
-  const n=new Date(), z=v=>String(v).padStart(2,'0');
+  const n=khParts(nowMs()), hm=n.t.split(':');   // по Камбодже, а не по часам телефона
   document.getElementById('bootWord').innerHTML='УЧЕТ'.split('').map((ch,i)=>
     '<span style="animation-delay:'+(i*70)+'ms">'+ch+'</span>').join('');
-  document.getElementById('date').value=today();
-  document.getElementById('time').value=z(n.getHours())+':'+z(Math.floor(n.getMinutes()/5)*5);
+  document.getElementById('date').value=n.d;
+  document.getElementById('time').value=hm[0]+':'+z2(Math.floor(Number(hm[1])/5)*5);
   applyLock(); renderStrip(); renderPreview();
   boot();
   checkUpdate();
