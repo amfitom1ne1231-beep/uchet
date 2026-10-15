@@ -84,6 +84,15 @@
   .lcard.paused .ltimer{color:var(--g2)}
   .lsum{text-align:center;font-size:13px;color:var(--g2);font-family:var(--mono)}
   .lsum b{color:var(--w);font-weight:600}
+  .lpauses{text-align:center;font-size:12.5px;color:var(--g2);margin-top:6px;line-height:1.45}
+  .lpauses:empty{display:none}
+  .prow{display:flex;align-items:center;gap:6px;margin-top:8px}
+  .prow input{flex:1;min-width:0;padding:10px 6px;font-size:15px;text-align:center}
+  .prow input::-webkit-calendar-picker-indicator{display:none}
+  .prow span{color:var(--g2);font-size:13px}
+  .prow .pd{flex:0 0 56px;text-align:right;font-family:var(--mono);color:var(--g1);font-size:12.5px}
+  .prow .del{min-width:36px;min-height:40px}
+  .pspans{font-size:12.5px;color:var(--g2);padding:0 0 4px;line-height:1.45}
   .lbtns{display:flex;gap:8px;margin-top:16px}
   .lbtns .btn{flex:1;padding:14px 8px;font-size:15px}
   .lcard .rm{width:100%;margin-top:8px}
@@ -806,7 +815,7 @@ function showText(title,txt){
 /* ======================= СОСТОЯНИЕ ======================= */
 let S={workers:[],customers:[],shifts:[],ops:[],live:[]};
 let user=null, isOwner=false, canWrite=false, locked=true;
-let hours=6, selW=[], selC=[], period='m', opCtx=null, openId=null, curTab=0, editId=null, editPaid={};
+let hours=6, selW=[], selC=[], period='m', opCtx=null, openId=null, curTab=0, editId=null, editPaid={}, editPauseMin=0;
 let booting=true, openDebt=null;
 const skeleton=n=>Array(n).fill(
   '<div class="sk"><i class="a"></i><div class="b"><i></i><i></i></div><i class="c"></i></div>').join('');
@@ -895,6 +904,30 @@ function livePlayed(l,now){
 }
 const clock=sec=>{ sec=Math.floor(sec); return Math.floor(sec/3600)+':'+z2(Math.floor(sec%3600/60))+':'+z2(sec%60); };
 const clockHM=sec=>{ const m=Math.floor(sec/60); return Math.floor(m/60)+':'+z2(m%60); };
+// Журнал пауз: [{s,e}] — когда началась и когда кончилась каждая пауза (e пусто — идет сейчас)
+const pauseSpans=log=>(Array.isArray(log)?log:[])
+  .map(p=>({s:Date.parse(p.s), e:p.e?Date.parse(p.e):null})).filter(p=>p.s);
+const spanSec=(p,now)=>Math.max(0,((p.e||now)-p.s)/1000);
+function spanText(p,now){
+  const d=pauseText(Math.round(spanSec(p,now)/60))||'меньше минуты';
+  return khParts(p.s).t+'–'+(p.e?khParts(p.e).t+' · '+d:'… · идёт '+d);
+}
+const spansLine=(log,now)=>pauseSpans(log).map(p=>spanText(p,now)).join(', ');
+// ч:мм по Камбодже → момент, ближайший к ref: пауза через полночь не съезжает на сутки
+function khNear(t,ref){
+  let ms=khToMs(khParts(ref).d,t);
+  if(ms-ref>12*3600e3) ms-=86400e3; else if(ref-ms>12*3600e3) ms+=86400e3;
+  return ms;
+}
+// поля пауз на экране итога → новый журнал; дату каждой границы берем ближайшую к прежней
+function pausesFromInputs(vals,oldLog,startMs){
+  const old=pauseSpans(oldLog);
+  return vals.map(function(v,i){
+    const o=old[i]||{s:startMs,e:startMs};
+    const s=khNear(v.s,o.s);
+    return {s:s, e:v.e?khNear(v.e,o.e||s):null};
+  });
+}
 // итог живой смены: часы к оплате, дата по Камбодже и суммы после скидки
 function liveSummary(l,now){
   const s=Date.parse(l.started_at), e=l.finished_at ? Date.parse(l.finished_at) : now;
@@ -1575,6 +1608,7 @@ function entryHtml(e){
         (e.note?' · '+esc(e.note):'');
     sum=money(e.total);
     detail=(pm?'<div>пауза — '+pauseText(pm)+', не оплачивается</div>':'')+
+           pauseSpans(e.pause_log).map(p=>'<div>&nbsp;&nbsp;⏸ '+spanText(p,0)+'</div>').join('')+
            (disc?'<div>скидка — '+money(disc)+' (по тарифу '+money(e.total+disc)+')</div>':'')+
            '<div>в кассу — '+money(e.kassa)+'</div><div>рабочим — по '+money(e.per_worker)+'</div>'+
            (e.custLinks||[]).map(function(l){
@@ -1681,6 +1715,7 @@ document.getElementById('save').onclick=async function(){
     pause_min:formPause(), discount:c.discount,
     note:document.getElementById('note').value.trim()||null
   };
+  if(wasEdit && row.pause_min!==editPauseMin) row.pause_log=[];
   btn.disabled=true;
 
   if(!online()){
@@ -1860,7 +1895,7 @@ function reportText(){
   entries().slice(0,60).forEach(e=>{
     const d=String(e.date).split('-'), day=Number(d[2])+' '+MON[Number(d[1])-1];
     if(e.kind==='shift') lines.push(day+(e.start_time?' '+hhmm(e.start_time):'')+' — '+e.hours+'ч'+
-      (e.pause_min?' (пауза '+pauseText(e.pause_min)+')':'')+', '+
+      (e.pause_min?' (пауза '+pauseText(e.pause_min)+(pauseSpans(e.pause_log).length?': '+spansLine(e.pause_log,0):'')+')':'')+', '+
       e.workerIds.map(wName).join('/')+(e.customerIds.length?' ('+e.customerIds.map(cName).join('+')+')':'')+
       ' — '+money(e.total)+(Number(e.discount)?' (скидка '+money(e.discount)+')':''));
     else if(e.kind==='payout') lines.push(day+' — выплата '+wName(e.worker_id)+' '+money(e.amount));
@@ -2103,14 +2138,14 @@ if(TG){
 function csvText(){
   const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
   const rows=[['Тип','Дата','Начало','Конец','Часы','Рабочие','Кастомеры',
-               'Сумма','В кассу','Каждому рабочему','С кастомера','Оплата','Заметка','Пауза, мин','Скидка']];
+               'Сумма','В кассу','Каждому рабочему','С кастомера','Оплата','Заметка','Пауза, мин','Скидка','Паузы']];
   entries().slice().reverse().forEach(e=>{
     if(e.kind==='shift') rows.push(['Смена',e.date,hhmm(e.start_time),
       e.start_time?shiftEnd(e):'',e.hours,
       e.workerIds.map(wName).join(' / '),e.customerIds.map(cName).join(' + '),
       e.total,e.kassa,e.per_worker,e.per_customer,
       (e.custLinks||[]).map(l=>cName(l.id)+': '+(l.paid?'оплачено':'в долг')).join('; '),
-      e.note||'',e.pause_min||0,Number(e.discount)||0]);
+      e.note||'',e.pause_min||0,Number(e.discount)||0,spansLine(e.pause_log,0).replace(/, /g,'; ')]);
     else if(e.kind==='payout') rows.push(['Выплата',e.date,'','','',wName(e.worker_id),'',-e.amount,'','','','',e.note||'']);
     else if(e.kind==='income') rows.push(['Оплата от игроков',e.date,'','','','','',-e.amount,-e.amount/2,'','','',e.note||'']);
     else if(e.kind==='carry') rows.push(['Долг до начала учета',e.date,'','','','','',e.amount,e.amount/2,'','','',e.note||'']);
@@ -2203,6 +2238,7 @@ function startEdit(id){
   selC=(sh.custLinks||[]).map(l=>l.id);
   document.getElementById('note').value=sh.note||'';
   document.getElementById('pause').value=pauseInput(sh.pause_min||0);
+  editPauseMin=sh.pause_min||0;
   document.getElementById('discount').value=Number(sh.discount)>0 ? String(Number(sh.discount)).replace('.',',') : '';
   const p=String(sh.work_date).split('-');
   document.getElementById('editWhen').textContent =
@@ -2314,13 +2350,25 @@ function liveCustHtml(l){
   return '<div class="chips">'+(list.length ? list.map(c=>'<button class="chip" data-lcust="'+l.id+'|'+c.id+'" aria-pressed="'+
     (ids.indexOf(c.id)>=0)+'">'+esc(c.name)+'</button>').join('') : '<div class="empty">Список кастомеров пуст</div>')+'</div>';
 }
+// паузы на экране итога: время начала и конца каждой можно поправить, лишнюю — убрать, забытую — добавить
+function pauseRowsHtml(l){
+  const now=nowMs();
+  return pauseSpans(l.pause_log).map((p,i)=>'<div class="prow" data-pi="'+i+'">'+
+      '<input type="time" data-pf="s" value="'+khParts(p.s).t+'"><span>–</span>'+
+      '<input type="time" data-pf="e" value="'+(p.e?khParts(p.e).t:'')+'">'+
+      '<span class="pd">'+(pauseText(Math.round(spanSec(p,now)/60))||'<1 мин')+'</span>'+
+      '<button class="del" data-pdel="'+i+'" aria-label="Убрать паузу">×</button></div>').join('')+
+    (pauseSpans(l.pause_log).length ? '' : '<div class="note" style="margin-top:0">Пауз не было.</div>')+
+    '<button class="pill" data-padd="'+l.id+'" style="margin-top:8px">+ Добавить паузу</button>';
+}
 function liveCalcHtml(l){
   const x=liveSummary(l,nowMs()), c=x.c, nw=(l.worker_ids||[]).length, nc=(l.customer_ids||[]).length;
   const sp=khParts(x.s), ep=khParts(x.e), row=(k,v,cls)=>'<div'+(cls?' class="'+cls+'"':'')+'><span>'+k+'</span><b>'+v+'</b></div>';
   return '<div class="kv">'+
     row('Начало',dayText(sp.d)+' '+sp.t)+row('Конец',dayText(ep.d)+' '+ep.t)+
     row('Отыграно',clockHM(x.played))+
-    (x.pauseMin?row('Пауза'+(l.pauses>1?' ('+l.pauses+')':''),pauseText(x.pauseMin)):'')+
+    (x.pauseMin?row('Пауза'+(pauseSpans(l.pause_log).length>1?' ('+pauseSpans(l.pause_log).length+')':''),pauseText(x.pauseMin)):'')+
+    (locked && pauseSpans(l.pause_log).length ? '<div class="pspans">'+spansLine(l.pause_log,nowMs())+'</div>' : '')+
     row('К оплате',x.h+' '+hourWord(x.h))+
     (c.discount?row('По тарифу',money(c.full))+row('Скидка','−'+money(c.discount)):'')+
     row('Сумма',money(c.total),'big')+
@@ -2342,8 +2390,7 @@ function liveCardHtml(l){
           '<label><span class="cap">Начало</span><input type="date" data-lf="sd" value="'+sp.d+'"><input type="time" data-lf="st" value="'+sp.t+'"></label>'+
           '<label><span class="cap">Конец</span><input type="date" data-lf="ed" value="'+ep.d+'"><input type="time" data-lf="et" value="'+ep.t+'"></label>'+
         '</div>'+
-        '<label class="field"><span>Пауза, ч:мм</span><input type="text" data-lf="pause" inputmode="decimal" placeholder="0:00" value="'+
-          pauseInput(Math.round((l.pause_sec||0)/60))+'"></label>'+
+        '<span class="cap">Паузы — не оплачиваются</span><div data-plist="'+l.id+'">'+pauseRowsHtml(l)+'</div>'+
         '<label class="field"><span>Скидка, $</span><input type="text" data-lf="disc" inputmode="decimal" placeholder="0" value="'+
           (Number(l.discount)?String(Number(l.discount)).replace('.',','):'')+'"></label>')+
       '<span class="cap">Игроки</span>'+liveCustHtml(l)+
@@ -2363,6 +2410,7 @@ function liveCardHtml(l){
       '<span class="lmeta">с '+khParts(Date.parse(l.started_at)).t+' · '+ws+'</span></div>'+
     '<div class="ltimer" data-tick="'+l.id+'">'+clock(livePlayed(l,nowMs()))+'</div>'+
     '<div class="lsum" data-tsum="'+l.id+'"></div>'+
+    '<div class="lpauses" data-tpause="'+l.id+'"></div>'+
     '<span class="cap">Игроки'+(locked?'':' — можно добавить по ходу или в конце')+'</span>'+liveCustHtml(l)+
     '<div class="lbtns w-only">'+
       '<button class="btn sec" data-lact="'+(paused?'resume':'pause')+'" data-id="'+l.id+'">'+(paused?'Продолжить':'Пауза')+'</button>'+
@@ -2403,6 +2451,8 @@ function tick(){
   rows.forEach(function(l){
     const t=document.querySelector('[data-tick="'+l.id+'"]');
     if(t) t.textContent=clock(livePlayed(l,now));
+    const pl=document.querySelector('[data-tpause="'+l.id+'"]');
+    if(pl){ const line=spansLine(l.pause_log,now); pl.textContent=line?'Паузы: '+line:''; }
     const sm=document.querySelector('[data-tsum="'+l.id+'"]');
     if(sm){
       const x=liveSummary(l,now);
@@ -2413,7 +2463,8 @@ function tick(){
   document.getElementById('liveStrip').innerHTML=rows.map(function(l){
     const ws=liveWorkers(l);
     if(l.finished_at) return '<div data-golive="1">Смена закончена · ждёт сохранения · '+ws+'</div>';
-    return '<div data-golive="1"><span class="live'+(l.paused_at?' off':'')+'"></span>'+(l.paused_at?'Пауза':'Идёт смена')+
+    return '<div data-golive="1"><span class="live'+(l.paused_at?' off':'')+'"></span>'+
+      (l.paused_at?'Пауза с '+khParts(Date.parse(l.paused_at)).t:'Идёт смена')+
       ' · <b>'+clock(livePlayed(l,now))+'</b> · '+ws+'</div>';
   }).join('');
   document.querySelector('.tabs button[data-v="live"]').classList.toggle('hot',rows.some(l=>!l.finished_at));
@@ -2471,6 +2522,18 @@ document.getElementById('liveList').addEventListener('click',async e=>{
     return;
   }
   if(save) return liveSave(save.dataset.lsave, save);
+  // забытая пауза — добавляем 15 минут в конце смены, дальше время правится полями
+  const padd=e.target.closest('[data-padd]'), pdel=e.target.closest('[data-pdel]');
+  if(padd || pdel){
+    const card=(padd||pdel).closest('[data-live]'), l=(S.live||[]).find(x=>x.id===card.dataset.live);
+    if(!l || !liveReady()) return;
+    const spans=pauseSpans(l.pause_log), end=Date.parse(l.finished_at)||nowMs();
+    if(padd) spans.push({s:Math.max(Date.parse(l.started_at),end-15*60e3), e:end});
+    else spans.splice(Number(pdel.dataset.pdel),1);
+    tap(8); await savePauses(card,l,spans);
+    card.dataset.sig=''; renderLive();
+    return;
+  }
   if(drop){
     if(!liveReady()) return;
     if(!await ask('Отменить смену без записи? Таймер пропадёт, в историю ничего не попадёт.')) return;
@@ -2479,8 +2542,32 @@ document.getElementById('liveList').addEventListener('click',async e=>{
     S.live=(S.live||[]).filter(x=>x.id!==drop.dataset.ldrop); renderLive(); toast('Смена отменена');
   }
 });
-// правка итога: время, пауза, скидка, комментарий — пишем в базу и пересчитываем
+// журнал пауз → в базу; общая пауза — сумма всех отрезков
+async function savePauses(card,l,spans){
+  if(spans.some(p=>!(p.s>0) || (p.e!==null && !(p.e>p.s)))){
+    toast('Конец паузы должен быть позже начала'); card.dataset.sig=''; renderLive(); return;
+  }
+  const log=spans.map(p=>({s:new Date(p.s).toISOString(), e:p.e?new Date(p.e).toISOString():null}));
+  const sec=Math.round(spans.reduce((a,p)=>a+spanSec(p,Date.parse(l.finished_at)||nowMs()),0));
+  const {data,error}=await sb.from('live_shifts').update({pause_log:log,pause_sec:sec}).eq('id',l.id).select().single();
+  if(error) return fail(error,'Паузы не сохранились');
+  putLive(data);
+  card.querySelector('[data-lcalc]').innerHTML=liveCalcHtml(data);
+  card.querySelectorAll('.prow').forEach(function(r,i){
+    const p=pauseSpans(data.pause_log)[i];
+    if(p) r.querySelector('.pd').textContent=pauseText(Math.round(spanSec(p,nowMs())/60))||'<1 мин';
+  });
+  card.dataset.sig=liveSig(data);
+}
+// правка итога: время, паузы, скидка, комментарий — пишем в базу и пересчитываем
 document.getElementById('liveList').addEventListener('change',async e=>{
+  const pf=e.target.closest('[data-pf]');
+  if(pf){
+    const card=pf.closest('[data-live]'), l=(S.live||[]).find(x=>x.id===card.dataset.live);
+    if(!l || !liveReady()) return;
+    const vals=[...card.querySelectorAll('.prow')].map(r=>({s:r.querySelector('[data-pf="s"]').value, e:r.querySelector('[data-pf="e"]').value}));
+    return savePauses(card,l,pausesFromInputs(vals,l.pause_log,Date.parse(l.started_at)));
+  }
   const f=e.target.closest('[data-lf]'); if(!f) return;
   const card=f.closest('[data-live]'), id=card.dataset.live, l=(S.live||[]).find(x=>x.id===id);
   if(!l || !liveReady()) return;
@@ -2491,7 +2578,7 @@ document.getElementById('liveList').addEventListener('change',async e=>{
   const en=(v('ed')===ep.d&&v('et')===ep.t) ? Date.parse(l.finished_at) : khToMs(v('ed'),v('et'));
   if(!(en>s)){ toast('Конец должен быть позже начала'); card.dataset.sig=''; renderLive(); return; }
   const patch={ started_at:new Date(s).toISOString(), finished_at:new Date(en).toISOString(),
-    pause_sec:parsePause(v('pause'))*60, discount:Math.max(0,parseAmt(v('disc'))), note:v('note').trim()||null };
+    discount:Math.max(0,parseAmt(v('disc'))), note:v('note').trim()||null };
   const {data,error}=await sb.from('live_shifts').update(patch).eq('id',id).select().single();
   if(error) return fail(error,'Не сохранилось');
   putLive(data);
@@ -2522,7 +2609,7 @@ async function liveSave(id,btn){
 // GitHub Pages разрешает телефону держать страницу в кэше до 10 минут, а Telegram на iPhone
 // сервис-воркер не запускает. Поэтому сами спрашиваем, не вышла ли версия новее, и перезагружаемся.
 // При каждой выкладке APP_VERSION меняется.
-const APP_VERSION='2026-10-15.1';
+const APP_VERSION='2026-10-15.2';
 async function checkUpdate(){
   try{
     const r=await fetch('index.html?nc='+Date.now(),{cache:'no-store'});
