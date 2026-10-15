@@ -92,7 +92,16 @@
   .prow span{color:var(--g2);font-size:13px}
   .prow .pd{flex:0 0 56px;text-align:right;font-family:var(--mono);color:var(--g1);font-size:12.5px}
   .prow .del{min-width:36px;min-height:40px}
+  .prow .pn{flex:0 0 76px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;color:var(--w)}
   .pspans{font-size:12.5px;color:var(--g2);padding:0 0 4px;line-height:1.45}
+  .plrow{margin-top:12px;padding-top:10px;border-top:1px solid var(--sep)}
+  .plrow .top{display:flex;justify-content:space-between;gap:10px;font-size:15px}
+  .plrow .top b{font-family:var(--mono);font-weight:500;font-size:13px;color:var(--g1);text-align:right}
+  .plrow .times{display:flex;align-items:center;gap:6px;margin-top:8px}
+  .plrow .times span{font-size:12.5px;color:var(--g2)}
+  .plrow .times input{flex:1;min-width:0;padding:10px 6px;font-size:15px;text-align:center}
+  .plrow .times input::-webkit-calendar-picker-indicator{display:none}
+  .chip.gone{border-style:dashed;color:var(--g3)}
   .lbtns{display:flex;gap:8px;margin-top:16px}
   .lbtns .btn{flex:1;padding:14px 8px;font-size:15px}
   .lcard .rm{width:100%;margin-top:8px}
@@ -240,7 +249,7 @@
   .row.kassa{background:#181818}
   .row.kassa .nm{font-weight:600}
   .row .b.inv{background:var(--w);color:#000;border-radius:8px;padding:3px 10px}
-  .badge{background:var(--w);color:#000;border-radius:6px;padding:1px 7px;font-size:11.5px;
+  .badge{background:var(--w);color:#000;border-radius:6px;padding:1px 7px;font-size:11.5px;white-space:nowrap;
     font-weight:600;font-family:var(--sans);letter-spacing:.02em}
   .ent.debt .s:after{content:' •';color:var(--w)}
   .pill{border:1px solid var(--line);background:none;color:var(--w);border-radius:999px;
@@ -297,8 +306,9 @@
   .ent .chev{color:var(--g2);font-size:13px;transition:transform .35s var(--spring)}
   .ent.open .chev{transform:rotate(90deg)}
   .detail{overflow:hidden;max-height:0;transition:max-height .4s var(--spring)}
-  .detail.open{max-height:240px}
-  .detail .in{padding:0 16px 16px 67px;font-size:13px;color:var(--g1);font-family:var(--mono)}
+  .detail.open{max-height:3000px}
+  .detail .lnk{line-height:1.5}
+  .detail .in{padding:0 16px 16px 24px;font-size:13px;color:var(--g1);font-family:var(--mono)}
   .detail .in div{padding:3px 0}
   .rm{margin-top:10px;background:none;border:1px solid var(--line);color:var(--g1);
     border-radius:10px;padding:11px 16px;min-height:44px;font-size:13px;cursor:pointer;font-family:var(--sans)}
@@ -575,6 +585,12 @@
       <div class="chips" id="wchips"></div>
       <span class="cap">Кастомеры — счет делится поровну</span>
       <div class="chips" id="cchips"></div>
+      <div id="playersBox" style="display:none">
+        <span class="cap" id="playersCap">Кто во сколько сидел — пусто = вся смена</span>
+        <div id="playersList"></div>
+        <div id="payerBox"><span class="cap">Один платит за всех, кто сидел с ним</span>
+          <div class="chips" id="payerChips"></div></div>
+      </div>
     </div>
 
     <div class="fsec last">
@@ -919,6 +935,62 @@ function spansFromTimes(d,t,rows){
     return {s:s,e:e};
   });
 }
+/* ---- игроки: кто сколько сидел и кто за кого платит ---- */
+// отрезки времени [{s,e}] в мс: длина, обрезка по смене, вычитание пауз, пересечение
+const spanLen=list=>list.reduce((a,p)=>a+Math.max(0,p.e-p.s),0);
+const spanCut=(list,a,b)=>list.map(p=>({s:Math.max(p.s,a),e:Math.min(p.e,b)})).filter(p=>p.e>p.s);
+function spanMinus(list,holes){
+  let out=list.slice();
+  (holes||[]).forEach(function(h){
+    const next=[];
+    out.forEach(function(p){
+      if(h.e<=p.s||h.s>=p.e){ next.push(p); return; }
+      if(h.s>p.s) next.push({s:p.s,e:h.s});
+      if(h.e<p.e) next.push({s:h.e,e:p.e});
+    });
+    out=next;
+  });
+  return out;
+}
+function spanAnd(a,b){
+  const out=[];
+  a.forEach(p=>b.forEach(function(q){ const s=Math.max(p.s,q.s), e=Math.min(p.e,q.e); if(e>s) out.push({s:s,e:e}); }));
+  return out;
+}
+// ч:мм в смене на дату d: раньше ref — уже следующие сутки
+function khAfter(d,t,ref){ let ms=khToMs(d,t); if(ms<ref) ms+=864e5; return ms; }
+// Счет игроков: сумма смены делится пропорционально времени за столом, паузы не считаются.
+// Кто платит за всех (payer) — берет на себя долю каждого за то время, что тот сидел вместе с ним;
+// кто подсел уже после его ухода, платит за себя сам. Если времени ни у кого нет — поровну.
+// players: [{id, spans:[{s,e}]}] → [{id, ms, share, amount, covered}], суммы в центах сходятся с total.
+function splitPlayers(total,players,pauses,payer){
+  if(!players.length) return [];
+  const own=players.map(p=>spanMinus(p.spans||[],pauses));
+  let t=own.map(spanLen), T=t.reduce((a,x)=>a+x,0);
+  const flat=!(T>0);
+  if(flat){ t=players.map(()=>1); T=players.length; }
+  const pi=players.findIndex(p=>p.id===payer);
+  const res=players.map((p,i)=>({id:p.id, ms:flat?0:t[i], share:total*t[i]/T, amount:total*t[i]/T, covered:0}));
+  if(pi>=0) res.forEach(function(r,i){
+    if(i===pi) return;
+    const moved=total*(flat?1:spanLen(spanAnd(own[i],own[pi])))/T;
+    r.amount-=moved; r.covered=moved; res[pi].amount+=moved;
+  });
+  const cents=v=>Math.round(v*100)/100;
+  res.forEach(r=>{ r.share=cents(r.share); r.amount=cents(r.amount); r.covered=cents(r.covered); });
+  const diff=cents(total-res.reduce((a,r)=>a+r.amount,0));
+  if(diff){ const big=res.reduce((a,r)=>r.amount>a.amount?r:a,res[0]); big.amount=cents(big.amount+diff); }
+  return res;
+}
+// живая смена: отрезки каждого игрока из журнала; кого добавили без времени — вся смена
+function livePlayerSpans(l,now){
+  const end=l.finished_at?Date.parse(l.finished_at):now, start=Date.parse(l.started_at), log=Array.isArray(l.customer_log)?l.customer_log:[];
+  return (l.customer_ids||[]).map(function(id){
+    const mine=log.filter(x=>x.id===id).map(x=>({s:Date.parse(x.s), e:x.e?Date.parse(x.e):end}));
+    return {id:id, spans:spanCut(mine.length?mine:[{s:start,e:end}],start,end)};
+  });
+}
+const livePauseSpans=(l,now)=>pauseSpans(l.pause_log).map(p=>({s:p.s,e:p.e||(l.finished_at?Date.parse(l.finished_at):now)}));
 // поля пауз на экране итога → новый журнал; дату каждой границы берем ближайшую к прежней
 function pausesFromInputs(vals,oldLog,startMs){
   const old=pauseSpans(oldLog);
@@ -935,6 +1007,7 @@ function liveSummary(l,now){
   const c=calc(h,(l.worker_ids||[]).length,(l.customer_ids||[]).length,d,l.discount);
   return {s,e,played,h,d,c,pauseMin:Math.round((l.pause_sec||0)/60)};
 }
+const owes=l=>!l.paid && Number(l.amount)>0.004;
 const parseAmt=v=>{const n=Number(String(v).replace(',','.').replace(/\s/g,''));return isFinite(n)?n:0;};
 const wName=id=>{const w=S.workers.find(x=>x.id===id);return w?w.name:'—';};
 const cName=id=>{const c=S.customers.find(x=>x.id===id);return c?c.name:'—';};
@@ -972,7 +1045,8 @@ function applyPending(){
         total:q.row.total, kassa:q.row.kassa,
         per_worker:q.row.per_worker, per_customer:q.row.per_customer,
         workerIds:q.workers.slice(), customerIds:q.customers.slice(),
-        custLinks:q.customers.map(id=>({id:id,paid:false,amount:q.row.per_customer})),
+        custLinks:(q.links||q.customers.map(id=>({customer_id:id,amount:q.row.per_customer})))
+          .map(l=>({id:l.customer_id,paid:false,amount:l.amount,share:l.share,spans:l.spans||[],paid_by:l.paid_by||null})),
         created_at:q.at });
     } else {
       S.ops.unshift({ id:q.id, pending:true, kind:q.row.kind, worker_id:q.row.worker_id,
@@ -990,8 +1064,9 @@ async function flushQueue(){
         const {data,error}=await sb.from('shifts').insert(q.row).select('id').single();
         if(error) throw error;
         const links=[sb.from('shift_workers').insert(q.workers.map(id=>({shift_id:data.id,worker_id:id})))];
-        if(q.customers.length) links.push(sb.from('shift_customers').insert(q.customers.map(id=>({
-          shift_id:data.id, customer_id:id, paid:false, amount:q.row.per_customer }))));
+        if(q.customers.length) links.push(sb.from('shift_customers').insert(
+          (q.links||q.customers.map(id=>({customer_id:id,amount:q.row.per_customer})))
+            .map(l=>Object.assign({shift_id:data.id, paid:false}, l))));
         const bad=(await Promise.all(links)).find(r=>r.error);
         // без людей смену не оставляем: убираем и пробуем позже целиком
         if(bad){ await sb.from('shifts').delete().eq('id',data.id); throw bad.error; }
@@ -1084,7 +1159,8 @@ async function loadAll(){
     workerIds:sw.filter(r=>r.shift_id===x.id).map(r=>r.worker_id),
     custLinks:sc.filter(r=>r.shift_id===x.id)
       .map(r=>({id:r.customer_id,paid:r.paid===true,paid_at:r.paid_at||null,
-                amount:r.amount!=null?Number(r.amount):Number(x.per_customer)})),
+                amount:r.amount!=null?Number(r.amount):Number(x.per_customer),
+                share:r.share!=null?Number(r.share):null, spans:r.spans||[], paid_by:r.paid_by||null})),
     customerIds:sc.filter(r=>r.shift_id===x.id).map(r=>r.customer_id)
   }));
   offlineData=false;
@@ -1373,8 +1449,80 @@ function renderPauseList(){
 }
 function clearExtras(){
   formPauses=[]; formPauseExtra=0; renderPauseList();
+  formPlayers={}; formPayer=null; document.getElementById('playersList').dataset.key='';
   document.getElementById('discount').value='';
 }
+
+// Игроки в форме: во сколько сел и встал (пусто — вся смена) и кто платит за всех, кто сидел с ним
+let formPlayers={}, formPayer=null;
+function formWindow(){
+  const d=document.getElementById('date').value, t=document.getElementById('time').value;
+  if(!d||!t) return null;
+  const s=khToMs(d,t);
+  return {d:d, s:s, e:s+(hours*60+formPause())*60e3};
+}
+function formPlayerSpans(id,w){
+  const fp=formPlayers[id]||{};
+  if(!w) return [];
+  if(fp.orig && !fp.dirty) return spanCut(fp.orig,w.s,w.e);   // давняя смена: время как было записано
+  const s=fp.s?khAfter(w.d,fp.s,w.s):w.s, e=fp.e?khAfter(w.d,fp.e,s):w.e;
+  return spanCut([{s:s,e:e}],w.s,w.e);
+}
+function formSplit(total){
+  const w=formWindow(), players=selC.map(id=>({id:id, spans:formPlayerSpans(id,w)}));
+  return {w:w, players:players, res:splitPlayers(total,players,w?formSpans():[],formPayer)};
+}
+// время игрока пишем, только если он сидел не всю смену
+function spansToSave(spans,w){
+  if(!w || !spans.length || (spans.length===1 && spans[0].s===w.s && spans[0].e===w.e)) return [];
+  return spans.map(p=>({s:new Date(p.s).toISOString(), e:new Date(p.e).toISOString()}));
+}
+function playerLinks(x,payer){
+  return x.res.map(r=>({customer_id:r.id, amount:r.amount, share:r.share,
+    spans:spansToSave(x.players.find(p=>p.id===r.id).spans,x.w),
+    paid_by:(payer && r.id!==payer && r.covered>0.004)?payer:null}));
+}
+function playerNote(r,payer){
+  if(payer && r.id===payer && r.amount>r.share+0.004) return money(r.amount)+' · свои '+money(r.share)+' + за других '+money(r.amount-r.share);
+  if(payer && r.id!==payer && r.covered>0.004) return r.amount>0.004 ? money(r.amount)+' · часть платит '+cName(payer) : '0 $ · платит '+cName(payer);
+  return money(r.amount)+(r.ms?' · '+clockHM(r.ms/1000):'');
+}
+function renderPlayers(total){
+  const box=document.getElementById('playersBox');
+  box.style.display=selC.length?'block':'none';
+  if(!selC.length) return;
+  if(formPayer && selC.indexOf(formPayer)<0) formPayer=null;
+  const x=formSplit(total), list=document.getElementById('playersList');
+  document.getElementById('playersCap').textContent = x.w ? 'Кто во сколько сидел — пусто = вся смена'
+    : 'Игроки — поставь время начала смены, чтобы учесть, кто во сколько сел';
+  // строки перерисовываем, только когда меняется состав: иначе поле теряет курсор
+  const key=selC.join()+'|'+!!x.w;
+  if(list.dataset.key!==key){
+    list.dataset.key=key;
+    list.innerHTML=selC.map(function(id){
+      const fp=formPlayers[id]||{};
+      return '<div class="plrow" data-pl="'+id+'"><div class="top"><span>'+esc(cName(id))+'</span><b class="pa"></b></div>'+
+        (x.w?'<div class="times"><span>сел</span><input type="time" data-plf="s" value="'+(fp.s||'')+'">'+
+             '<span>встал</span><input type="time" data-plf="e" value="'+(fp.e||'')+'"></div>':'')+'</div>';
+    }).join('');
+  }
+  x.res.forEach(function(r){
+    const el=list.querySelector('[data-pl="'+r.id+'"] .pa'); if(el) el.textContent=playerNote(r,formPayer);
+  });
+  document.getElementById('payerBox').style.display=selC.length>1?'block':'none';
+  document.getElementById('payerChips').innerHTML='<button class="chip" type="button" data-payer="" aria-pressed="'+!formPayer+'">Никто</button>'+
+    selC.map(id=>'<button class="chip" type="button" data-payer="'+id+'" aria-pressed="'+(formPayer===id)+'">'+esc(cName(id))+'</button>').join('');
+}
+document.getElementById('playersList').addEventListener('input',function(e){
+  const f=e.target.closest('[data-plf]'); if(!f) return;
+  const id=f.closest('[data-pl]').dataset.pl, fp=formPlayers[id]=formPlayers[id]||{};
+  fp[f.dataset.plf]=f.value; fp.dirty=true;
+  renderPreview();
+});
+document.getElementById('payerChips').onclick=e=>{
+  const b=e.target.closest('[data-payer]'); if(!b||guard()) return;
+  formPayer=b.dataset.payer||null; tap(8); renderPreview();
+};
 document.getElementById('pauseAdd').onclick=function(){
   if(guard()) return;
   // новая пауза — с конца прошлой или с начала смены, на 15 минут; время потом правится
@@ -1404,8 +1552,7 @@ function renderPreview(){
   document.getElementById('pvLine').innerHTML =
     (c.discount ? 'по тарифу '+money(c.full)+' − скидка <b>'+money(c.discount)+'</b><br>' : '') +
     'в кассу <b>'+money(c.kassa)+'</b>' +
-    (selW.length ? ' · рабочим по <b>'+money(c.perWorker)+'</b>' : '') +
-    (selC.length>1 ? ' · с кастомера <b>'+money(c.perCustomer)+'</b>' : '');
+    (selW.length ? ' · рабочим по <b>'+money(c.perWorker)+'</b>' : '');
   document.getElementById('hval').textContent=hours;
   document.getElementById('hword').textContent=hourWord(hours);
   const t=document.getElementById('time').value;
@@ -1418,7 +1565,9 @@ function renderPreview(){
     : formPauseHalf() ? 'У паузы не хватает начала или конца'
     : !selW.length ? 'Отметь, кто работал'
     : !selC.length ? 'Кастомер не выбран — запишется без привязки'
+    : formPayer ? cName(formPayer)+' платит за тех, кто сидел с ним, — их долг перейдёт на него'
     : 'Смена запишется как неоплаченная — отметишь в истории';
+  renderPlayers(c.total);
 }
 
 /* ======================= ИТОГИ ======================= */
@@ -1507,7 +1656,7 @@ function renderSummary(){
         '<div class="b inv">'+money(b.debtTotal)+'</div></div>'+commonRow + dk
       .sort((x,y)=>b.debt[y]-b.debt[x])
       .map(function(id){
-        const games=S.shifts.filter(s=>(s.custLinks||[]).some(l=>l.id===id&&!l.paid))
+        const games=S.shifts.filter(s=>(s.custLinks||[]).some(l=>l.id===id&&owes(l)))
           .sort((x,y)=>String(y.work_date).localeCompare(String(x.work_date)));
         const open=(openDebt===id);
         const inner=games.map(function(g){
@@ -1581,7 +1730,7 @@ function applyFilter(list){
       if(e.kind!=='shift' || e.customerIds.indexOf(flt.customer)<0) return false;
     }
     if(flt.debt){
-      if(e.kind!=='shift' || !(e.custLinks||[]).some(l=>!l.paid)) return false;
+      if(e.kind!=='shift' || !(e.custLinks||[]).some(owes)) return false;
     }
     return true;
   });
@@ -1662,16 +1811,20 @@ function entryHtml(e){
            '<div>в кассу — '+money(e.kassa)+'</div><div>рабочим — по '+money(e.per_worker)+'</div>'+
            (e.custLinks||[]).map(function(l){
              const amt=l.amount!=null?l.amount:e.per_customer;
-             return '<div>'+esc(cName(l.id))+' — '+money(amt)+
-               (l.paid ? ' · оплачено'
-                       : ' <span class="badge">в долг</span> <button class="rm w-only"'+
+             const sp=pauseSpans(l.spans), payer=(e.custLinks||[]).some(x=>x.paid_by===l.id);
+             return '<div class="lnk">'+esc(cName(l.id))+' — '+money(amt)+
+               (sp.length?' · сидел '+sp.map(p=>khParts(p.s).t+'–'+(p.e?khParts(p.e).t:'…')).join(', '):'')+
+               (payer&&l.share!=null&&amt>l.share+0.004?' · свои '+money(l.share)+' + за других '+money(amt-l.share):'')+
+               (l.paid_by?(amt>0.004?' · часть платит ':' · платит ')+esc(cName(l.paid_by)):'')+
+               (owes(l) ? ' <span class="badge">в долг</span> <button class="rm w-only"'+
                          ' style="margin:0 0 0 6px;padding:6px 11px;min-height:34px"'+
-                         ' data-pay1="'+e.id+'|'+l.id+'">Закрыть</button>')+'</div>';
+                         ' data-pay1="'+e.id+'|'+l.id+'">Закрыть</button>'
+                        : (l.paid&&amt>0.004?' · оплачено':''))+'</div>';
            }).join('')+
-           ((e.custLinks||[]).filter(l=>!l.paid).length>1
+           ((e.custLinks||[]).filter(owes).length>1
              ? '<button class="rm w-only" data-payall="'+e.id+'" style="margin-top:10px">'+
                'Оплатили все · закрыть смену</button>' : '')+
-           ((e.custLinks||[]).length && (e.custLinks||[]).every(l=>l.paid)
+           ((e.custLinks||[]).length && !(e.custLinks||[]).some(owes)
              ? '<div style="padding-top:4px">смена оплачена полностью</div>' : '')+
            (e.note?'<div>заметка: '+esc(e.note)+'</div>':'');
   } else if(e.kind==='payout'){
@@ -1692,7 +1845,7 @@ function entryHtml(e){
     sub=e.note?esc(e.note):'касса передана'; sum='−'+money(e.amount);
     detail='<div>передано из кассы</div>';
   }
-  if(e.kind==='shift' && (e.custLinks||[]).some(l=>!l.paid)) cls+=' debt';
+  if(e.kind==='shift' && (e.custLinks||[]).some(owes)) cls+=' debt';
   if(e.pending){ cls+=' pending'; detail='<div>ещё не отправлено в базу</div>'; }
   const acts = e.pending
     ? '<button class="d" data-drop="'+e.id+'">Убрать</button>'
@@ -1749,7 +1902,9 @@ function toggle(a,n){ const i=a.indexOf(n); if(i<0) a.push(n); else a.splice(i,1
 document.getElementById('wchips').onclick=e=>{ const b=e.target.closest('.chip'); if(!b||guard())return;
   tap(8); toggle(selW,b.dataset.id); renderChips(); renderPreview(); };
 document.getElementById('cchips').onclick=e=>{ const b=e.target.closest('.chip'); if(!b||guard())return;
-  tap(8); toggle(selC,b.dataset.id); renderChips(); renderPreview(); };
+  tap(8); toggle(selC,b.dataset.id);
+  if(selC.indexOf(b.dataset.id)<0){ delete formPlayers[b.dataset.id]; if(formPayer===b.dataset.id) formPayer=null; }
+  renderChips(); renderPreview(); };
 
 document.getElementById('save').onclick=async function(){
   if(guard())return;
@@ -1767,7 +1922,7 @@ document.getElementById('save').onclick=async function(){
 
   if(!online()){
     if(wasEdit){ btn.disabled=false; toast('Правка недоступна без интернета'); return; }
-    enqueue({t:'shift',row:row,workers:selW.slice(),customers:selC.slice()});
+    enqueue({t:'shift',row:row,workers:selW.slice(),customers:selC.slice(),links:playerLinks(formSplit(c.total),formPayer)});
     selC=[]; document.getElementById('note').value=''; clearExtras();
     S.shifts=[]; S.ops=[];
     loadCache(); applyPending(); renderAll(); renderOffbar();
@@ -1795,9 +1950,8 @@ document.getElementById('save').onclick=async function(){
   }
 
   const links=[sb.from('shift_workers').insert(selW.map(id=>({shift_id:sid,worker_id:id})))];
-  if(selC.length) links.push(sb.from('shift_customers').insert(selC.map(id=>({
-    shift_id:sid, customer_id:id, paid:!!paidAt[id], paid_at:paidAt[id]||null, amount:c.perCustomer
-  }))));
+  if(selC.length) links.push(sb.from('shift_customers').insert(playerLinks(formSplit(c.total),formPayer).map(l=>
+    Object.assign({shift_id:sid, paid:!!paidAt[l.customer_id], paid_at:paidAt[l.customer_id]||null}, l))));
   const bad=(await Promise.all(links)).find(r=>r.error);
   if(bad){
     // новую смену без людей не оставляем — убираем, чтобы повтор не дал дубль
@@ -1884,7 +2038,7 @@ document.getElementById('list').onclick=async e=>{
     if(guard())return;
     const sid=allp.dataset.payall;
     const sh=S.shifts.find(x=>x.id===sid);
-    const n=(sh&&sh.custLinks||[]).filter(l=>!l.paid).length;
+    const n=(sh&&sh.custLinks||[]).filter(owes).length;
     if(!await ask('Отметить оплату всей смены? Закроется долг у '+n+' участников.')) return;
     const {error}=await sb.from('shift_customers')
       .update({paid:true,paid_at:new Date().toISOString()})
@@ -2191,7 +2345,7 @@ function csvText(){
       e.start_time?shiftEnd(e):'',e.hours,
       e.workerIds.map(wName).join(' / '),e.customerIds.map(cName).join(' + '),
       e.total,e.kassa,e.per_worker,e.per_customer,
-      (e.custLinks||[]).map(l=>cName(l.id)+': '+(l.paid?'оплачено':'в долг')).join('; '),
+      (e.custLinks||[]).map(l=>cName(l.id)+': '+(l.paid_by&&!(Number(l.amount)>0.004)?'платит '+cName(l.paid_by):(l.paid?'оплачено':'в долг')+' '+l.amount)).join('; '),
       e.note||'',e.pause_min||0,Number(e.discount)||0,spansLine(e.pause_log,0).replace(/, /g,'; ')]);
     else if(e.kind==='payout') rows.push(['Выплата',e.date,'','','',wName(e.worker_id),'',-e.amount,'','','','',e.note||'']);
     else if(e.kind==='income') rows.push(['Оплата от игроков',e.date,'','','','','',-e.amount,-e.amount/2,'','','',e.note||'']);
@@ -2283,6 +2437,12 @@ function startEdit(id){
   document.getElementById('time').value=hhmm(sh.start_time);
   selW=sh.workerIds.slice();
   selC=(sh.custLinks||[]).map(l=>l.id);
+  formPlayers={}; formPayer=null; document.getElementById('playersList').dataset.key='';
+  (sh.custLinks||[]).forEach(function(l){
+    const sp=pauseSpans(l.spans).map(p=>({s:p.s,e:p.e||p.s}));
+    if(sp.length) formPlayers[l.id]={orig:sp, s:khParts(sp[0].s).t, e:khParts(sp[sp.length-1].e).t, dirty:false};
+    if(l.paid_by) formPayer=l.paid_by;
+  });
   document.getElementById('note').value=sh.note||'';
   const sp=pauseSpans(sh.pause_log);
   formPauses=sp.map(p=>({s:khParts(p.s).t, e:p.e?khParts(p.e).t:''}));
@@ -2392,12 +2552,48 @@ let liveW=null;   // операторы для новой смены
 const liveRows=()=>(S.live||[]).slice().sort((a,b)=>Date.parse(a.started_at)-Date.parse(b.started_at));
 const liveWorkers=l=>(l.worker_ids||[]).map(wName).map(esc).join(', ')||'—';
 
+// Игроки живой смены: нажал — сел (время сервера), еще раз — встал. Кто сидел — видно со временем.
+const liveLog=l=>Array.isArray(l.customer_log)?l.customer_log:[];
+const liveSeated=(l,id)=>liveLog(l).some(x=>x.id===id&&!x.e) ||
+  (!l.finished_at && (l.customer_ids||[]).indexOf(id)>=0 && !liveLog(l).some(x=>x.id===id));
+function livePresence(l){
+  const log=liveLog(l);
+  return (l.customer_ids||[]).map(function(id){
+    const mine=log.filter(x=>x.id===id);
+    return esc(cName(id))+' '+(mine.length ? mine.map(x=>x.e ? khParts(Date.parse(x.s)).t+'–'+khParts(Date.parse(x.e)).t
+      : 'с '+khParts(Date.parse(x.s)).t).join(', ') : 'вся смена');
+  }).join(' · ');
+}
 function liveCustHtml(l){
-  const ids=l.customer_ids||[];
-  if(locked) return '<div class="lsum" style="text-align:left">'+(ids.length?ids.map(cName).map(esc).join(' + '):'игроки не выбраны')+'</div>';
+  const ids=l.customer_ids||[], pres=ids.length?'<div class="lpauses" style="text-align:left">'+livePresence(l)+'</div>':'';
+  if(locked) return (ids.length?pres:'<div class="lsum" style="text-align:left">игроки не выбраны</div>');
   const list=S.customers.filter(c=>c.active||ids.indexOf(c.id)>=0);
-  return '<div class="chips">'+(list.length ? list.map(c=>'<button class="chip" data-lcust="'+l.id+'|'+c.id+'" aria-pressed="'+
-    (ids.indexOf(c.id)>=0)+'">'+esc(c.name)+'</button>').join('') : '<div class="empty">Список кастомеров пуст</div>')+'</div>';
+  return '<div class="chips">'+(list.length ? list.map(function(c){
+    const seat=liveSeated(l,c.id), was=!seat&&ids.indexOf(c.id)>=0&&!l.finished_at;
+    return '<button class="chip'+(was?' gone':'')+'" data-lcust="'+l.id+'|'+c.id+'" aria-pressed="'+(seat||(l.finished_at&&ids.indexOf(c.id)>=0))+'">'+
+      esc(c.name)+(was?' · ушёл':'')+'</button>';
+  }).join('') : '<div class="empty">Список кастомеров пуст</div>')+'</div>'+(l.finished_at?'':pres);
+}
+// один платит за всех, кто сидел с ним: его можно отметить по ходу или в конце
+function livePayerHtml(l){
+  const ids=l.customer_ids||[];
+  if(locked) return l.payer_id?'<div class="lpauses" style="text-align:left">платит за всех, кто сидел с ним: '+esc(cName(l.payer_id))+'</div>':'';
+  if(ids.length<2) return '';
+  return '<span class="cap">Один платит за всех, кто сидел с ним</span><div class="chips">'+
+    '<button class="chip" data-lpayer="'+l.id+'|" aria-pressed="'+!l.payer_id+'">Никто</button>'+
+    ids.map(id=>'<button class="chip" data-lpayer="'+l.id+'|'+id+'" aria-pressed="'+(l.payer_id===id)+'">'+esc(cName(id))+'</button>').join('')+'</div>';
+}
+// экран итога: во сколько каждый сел и встал — правится
+function livePlayersRowsHtml(l){
+  return liveLog(l).map((x,i)=>'<div class="prow" data-ci="'+i+'"><span class="pn">'+esc(cName(x.id))+'</span>'+
+    '<input type="time" data-cf="s" value="'+khParts(Date.parse(x.s)).t+'"><span>–</span>'+
+    '<input type="time" data-cf="e" value="'+(x.e?khParts(Date.parse(x.e)).t:'')+'"></div>').join('');
+}
+// счет игроков живой смены: по времени за столом и с учетом того, кто платит за всех
+function liveSplit(l,total,now){
+  const players=livePlayerSpans(l,now);
+  return {w:{s:Date.parse(l.started_at), e:l.finished_at?Date.parse(l.finished_at):now}, players:players,
+          res:splitPlayers(total,players,livePauseSpans(l,now),l.payer_id)};
 }
 // паузы на экране итога: время начала и конца каждой можно поправить, лишнюю — убрать, забытую — добавить
 function pauseRowsHtml(l){
@@ -2423,7 +2619,7 @@ function liveCalcHtml(l){
     row('Сумма',money(c.total),'big')+
     row('В кассу',money(c.kassa))+
     (nw?row(nw>1?'Каждому оператору':'Оператору',money(c.perWorker)):'')+
-    (nc?row(nc>1?'Каждому игроку':'Игроку',money(c.perCustomer)):'')+
+    liveSplit(l,c.total,nowMs()).res.map(r=>row(esc(cName(r.id)),esc(playerNote(r,l.payer_id)))).join('')+
     (x.h<1?'<span class="warn">Меньше 30 минут — записывать нечего. Вернись к смене или отмени её.</span>'
       : !nc?'<span class="warn">Игроки не выбраны — смена запишется без привязки к игроку.</span>':'')+
   '</div>';
@@ -2442,7 +2638,9 @@ function liveCardHtml(l){
         '<span class="cap">Паузы — не оплачиваются</span><div data-plist="'+l.id+'">'+pauseRowsHtml(l)+'</div>'+
         '<label class="field"><span>Скидка, $</span><input type="text" data-lf="disc" inputmode="decimal" placeholder="0" value="'+
           (Number(l.discount)?String(Number(l.discount)).replace('.',','):'')+'"></label>')+
-      '<span class="cap">Игроки</span>'+liveCustHtml(l)+
+      '<span class="cap">Игроки — нажми, чтобы добавить или убрать</span>'+liveCustHtml(l)+
+      (locked||!liveLog(l).length ? '' : '<span class="cap">Кто во сколько сидел</span><div data-pllist="'+l.id+'">'+livePlayersRowsHtml(l)+'</div>')+
+      livePayerHtml(l)+
       (locked ? (l.note?'<div class="lsum" style="text-align:left;margin-top:8px">'+esc(l.note)+'</div>':'')
         : '<input type="text" class="txt" data-lf="note" placeholder="Комментарий — необязательно" maxlength="200" value="'+
           esc(l.note||'')+'" style="margin-top:14px">')+
@@ -2460,7 +2658,7 @@ function liveCardHtml(l){
     '<div class="ltimer" data-tick="'+l.id+'">'+clock(livePlayed(l,nowMs()))+'</div>'+
     '<div class="lsum" data-tsum="'+l.id+'"></div>'+
     '<div class="lpauses" data-tpause="'+l.id+'"></div>'+
-    '<span class="cap">Игроки'+(locked?'':' — можно добавить по ходу или в конце')+'</span>'+liveCustHtml(l)+
+    '<span class="cap">Игроки'+(locked?'':' — нажми, когда сел и когда встал')+'</span>'+liveCustHtml(l)+livePayerHtml(l)+
     '<div class="lbtns w-only">'+
       '<button class="btn sec" data-lact="'+(paused?'resume':'pause')+'" data-id="'+l.id+'">'+(paused?'Продолжить':'Пауза')+'</button>'+
       '<button class="btn" data-lact="finish" data-id="'+l.id+'">Закончить смену</button></div>'+
@@ -2560,13 +2758,31 @@ document.getElementById('liveList').addEventListener('click',async e=>{
     return;
   }
   if(cust){
-    if(guard()) return;
+    if(!liveReady()) return;
     const [id,cid]=cust.dataset.lcust.split('|'), l=(S.live||[]).find(x=>x.id===id); if(!l) return;
-    const ids=(l.customer_ids||[]).slice(), i=ids.indexOf(cid);
-    if(i<0) ids.push(cid); else ids.splice(i,1);
-    tap(8);
-    const {data,error}=await sb.from('live_shifts').update({customer_ids:ids}).eq('id',id).select().single();
+    let act;
+    if(l.finished_at) act=(l.customer_ids||[]).indexOf(cid)>=0 ? 'remove' : 'sit';   // на итоге: вся смена или убрать
+    else if(liveSeated(l,cid)){
+      // нажал по ошибке в первую минуту — просто убираем, иначе «встал»
+      const open=liveLog(l).filter(x=>x.id===cid&&!x.e).pop();
+      act=(open && nowMs()-Date.parse(open.s)<60e3 && liveLog(l).filter(x=>x.id===cid).length===1) ? 'remove' : 'leave';
+    } else act='sit';
+    tap(8); cust.disabled=true;
+    const {data,error}=await sb.rpc('live_player',{p_id:id,p_customer:cid,p_action:act});
+    cust.disabled=false;
     if(error) return fail(error,'Игроки не сохранились');
+    if(data && data.id) putLive(data); else await loadAll();
+    renderLive();
+    toast(act==='sit'?cName(cid)+' сел'+(l.finished_at?'':' · '+khParts(nowMs()).t):act==='leave'?cName(cid)+' встал · '+khParts(nowMs()).t:cName(cid)+' убран');
+    return;
+  }
+  const payerBtn=e.target.closest('[data-lpayer]');
+  if(payerBtn){
+    if(!liveReady()) return;
+    const [id,pid]=payerBtn.dataset.lpayer.split('|');
+    tap(8);
+    const {data,error}=await sb.from('live_shifts').update({payer_id:pid||null}).eq('id',id).select().single();
+    if(error) return fail(error,'Не сохранилось');
     putLive(data); renderLive();
     return;
   }
@@ -2610,6 +2826,25 @@ async function savePauses(card,l,spans){
 }
 // правка итога: время, паузы, скидка, комментарий — пишем в базу и пересчитываем
 document.getElementById('liveList').addEventListener('change',async e=>{
+  const cf=e.target.closest('[data-cf]');
+  if(cf){
+    const card=cf.closest('[data-live]'), l=(S.live||[]).find(x=>x.id===card.dataset.live);
+    if(!l || !liveReady()) return;
+    const old=liveLog(l);
+    const log=[...card.querySelectorAll('[data-ci]')].map(function(r){
+      const o=old[Number(r.dataset.ci)], sv=r.querySelector('[data-cf="s"]').value, ev=r.querySelector('[data-cf="e"]').value;
+      const s=sv?khNear(sv,Date.parse(o.s)):Date.parse(o.s);
+      return {id:o.id, s:s, e:ev?khNear(ev,o.e?Date.parse(o.e):s):null};
+    });
+    if(log.some(x=>x.e!==null && !(x.e>x.s))){ toast('«Встал» должно быть позже, чем «сел»'); card.dataset.sig=''; renderLive(); return; }
+    const out=log.map(x=>({id:x.id, s:new Date(x.s).toISOString(), e:x.e?new Date(x.e).toISOString():null}));
+    const {data,error}=await sb.from('live_shifts').update({customer_log:out}).eq('id',l.id).select().single();
+    if(error) return fail(error,'Время игроков не сохранилось');
+    putLive(data);
+    card.querySelector('[data-lcalc]').innerHTML=liveCalcHtml(data);
+    card.dataset.sig=liveSig(data);
+    return;
+  }
   const pf=e.target.closest('[data-pf]');
   if(pf){
     const card=pf.closest('[data-live]'), l=(S.live||[]).find(x=>x.id===card.dataset.live);
@@ -2637,7 +2872,9 @@ document.getElementById('liveList').addEventListener('change',async e=>{
 async function liveSave(id,btn){
   const l=(S.live||[]).find(x=>x.id===id);
   if(!l || !liveReady()) return;
-  const x=liveSummary(l,nowMs()), ws=l.worker_ids||[], cs=l.customer_ids||[];
+  const now=nowMs(), x=liveSummary(l,now), ws=l.worker_ids||[];
+  const cs=playerLinks(liveSplit(l,x.c.total,now),l.payer_id)
+    .map(p=>({id:p.customer_id, amount:p.amount, share:p.share, spans:p.spans, paid_by:p.paid_by}));
   if(!ws.length){ toast('В смене нет операторов'); return; }
   if(x.h<1){ toast('Меньше 30 минут — записывать нечего'); return; }
   const sp=khParts(x.s);
@@ -2658,7 +2895,7 @@ async function liveSave(id,btn){
 // GitHub Pages разрешает телефону держать страницу в кэше до 10 минут, а Telegram на iPhone
 // сервис-воркер не запускает. Поэтому сами спрашиваем, не вышла ли версия новее, и перезагружаемся.
 // При каждой выкладке APP_VERSION меняется.
-const APP_VERSION='2026-10-15.3';
+const APP_VERSION='2026-10-15.4';
 async function checkUpdate(){
   try{
     const r=await fetch('index.html?nc='+Date.now(),{cache:'no-store'});
