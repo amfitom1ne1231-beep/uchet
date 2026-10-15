@@ -565,8 +565,9 @@
         <label><input type="date" id="date"></label>
         <label><input type="time" id="time" step="300"></label>
       </div>
-      <label class="field"><span>Пауза — не оплачивается</span>
-        <input type="text" id="pause" inputmode="decimal" placeholder="мин или ч.мм" autocomplete="off"></label>
+      <span class="cap">Паузы — не оплачиваются, сдвигают конец</span>
+      <div id="pauseList"></div>
+      <button class="pill" id="pauseAdd" type="button" style="margin-top:8px">+ Пауза</button>
     </div>
 
     <div class="fsec">
@@ -815,7 +816,7 @@ function showText(title,txt){
 /* ======================= СОСТОЯНИЕ ======================= */
 let S={workers:[],customers:[],shifts:[],ops:[],live:[]};
 let user=null, isOwner=false, canWrite=false, locked=true;
-let hours=6, selW=[], selC=[], period='m', opCtx=null, openId=null, curTab=0, editId=null, editPaid={}, editPauseMin=0;
+let hours=6, selW=[], selC=[], period='m', opCtx=null, openId=null, curTab=0, editId=null, editPaid={};
 let booting=true, openDebt=null;
 const skeleton=n=>Array(n).fill(
   '<div class="sk"><i class="a"></i><div class="b"><i></i><i></i></div><i class="c"></i></div>').join('');
@@ -842,22 +843,10 @@ function paidHours(sec){
   const min=Math.floor(Math.max(0,sec)/60);
   return Math.floor(min/60)+(min%60>=30?1:0);
 }
-// Пауза пишется минутами или ч:мм: «90», «1:30», «1.30» — одно и то же.
-// На цифровой клавиатуре iPhone нет двоеточия, поэтому годится и точка/запятая;
-// одна цифра после нее — доли часа: «1,5» = полтора часа.
-function parsePause(v){
-  const s=String(v==null?'':v).trim();
-  let m;
-  if((m=s.match(/^(\d{1,2}):(\d{1,2})$/)) || (m=s.match(/^(\d{1,2})[.,](\d{2})$/))) return (+m[1])*60+(+m[2]);
-  if((m=s.match(/^(\d{1,2})[.,](\d)$/))) return (+m[1])*60+(+m[2])*6;
-  if(/^\d{1,4}$/.test(s)) return +s;
-  return 0;
-}
 function pauseText(min){
   const h=Math.floor(min/60), m=min%60;
   return (h?h+' ч':'')+(h&&m?' ':'')+(m?m+' мин':'');
 }
-const pauseInput=min=> min>0 ? Math.floor(min/60)+':'+String(min%60).padStart(2,'0') : '';
 function money(v){
   const r=Math.round(Number(v)*100)/100;
   const s=String(Math.abs(r)).replace('.',',').split(',');
@@ -919,6 +908,17 @@ function khNear(t,ref){
   if(ms-ref>12*3600e3) ms-=86400e3; else if(ref-ms>12*3600e3) ms+=86400e3;
   return ms;
 }
+// паузы из формы (ч:мм) → отрезки. Пауза раньше начала смены — уже следующие сутки,
+// конец раньше начала паузы — пауза через полночь. Незаполненные строки не считаем.
+function spansFromTimes(d,t,rows){
+  if(!d) return [];
+  const st=khToMs(d,t||'00:00');
+  return rows.filter(p=>p.s&&p.e).map(function(p){
+    let s=khToMs(d,p.s); if(s<st) s+=864e5;
+    let e=khToMs(d,p.e); if(e<s) e+=864e5;
+    return {s:s,e:e};
+  });
+}
 // поля пауз на экране итога → новый журнал; дату каждой границы берем ближайшую к прежней
 function pausesFromInputs(vals,oldLog,startMs){
   const old=pauseSpans(oldLog);
@@ -968,7 +968,7 @@ function applyPending(){
     if(q.t==='shift'){
       S.shifts.unshift({ id:q.id, pending:true, note:q.row.note,
         work_date:q.row.work_date, start_time:q.row.start_time, hours:q.row.hours,
-        pause_min:q.row.pause_min||0, discount:q.row.discount||0,
+        pause_min:q.row.pause_min||0, discount:q.row.discount||0, pause_log:q.row.pause_log||[],
         total:q.row.total, kassa:q.row.kassa,
         per_worker:q.row.per_worker, per_customer:q.row.per_customer,
         workerIds:q.workers.slice(), customerIds:q.customers.slice(),
@@ -1350,8 +1350,52 @@ function renderChips(){
   document.getElementById('cchips').innerHTML = c.length
     ? c.map(x=>chipHtml(x,selC.indexOf(x.id)>=0)).join('') : '<div class="empty">Список пуст</div>';
 }
-const formPause=()=>parsePause(document.getElementById('pause').value);
-function clearExtras(){ document.getElementById('pause').value=''; document.getElementById('discount').value=''; }
+// Паузы в форме — каждая отдельно, со временем начала и конца (как у таймера)
+let formPauses=[], formPauseExtra=0;   // extra — старая пауза без времени (при правке давней смены)
+const formSpans=()=>spansFromTimes(document.getElementById('date').value,document.getElementById('time').value,formPauses);
+const formPause=()=>Math.round(formSpans().reduce((a,p)=>a+(p.e-p.s),0)/60e3)+formPauseExtra;
+const formPauseHalf=()=>formPauses.some(p=>!p.s!==!p.e);
+const formPauseLog=()=>formSpans().map(p=>({s:new Date(p.s).toISOString(),e:new Date(p.e).toISOString()}));
+function renderPauseList(){
+  const spans=spansFromTimes(document.getElementById('date').value,document.getElementById('time').value,
+    formPauses.map(p=>p.s&&p.e?p:{s:'',e:''}));
+  let k=0;
+  document.getElementById('pauseList').innerHTML=formPauses.map(function(p,i){
+    const sp=(p.s&&p.e)?spans[k++]:null;
+    return '<div class="prow" data-fp="'+i+'">'+
+      '<input type="time" data-fps="s" value="'+p.s+'"><span>–</span>'+
+      '<input type="time" data-fps="e" value="'+p.e+'">'+
+      '<span class="pd">'+(sp?(pauseText(Math.round((sp.e-sp.s)/60e3))||'0 мин'):'—')+'</span>'+
+      '<button class="del" type="button" data-fpdel="'+i+'" aria-label="Убрать паузу">×</button></div>';
+  }).join('')+
+  (formPauseExtra?'<div class="prow"><span style="flex:1">без времени</span><span class="pd">'+pauseText(formPauseExtra)+'</span>'+
+    '<button class="del" type="button" data-fpx="1" aria-label="Убрать паузу">×</button></div>':'');
+}
+function clearExtras(){
+  formPauses=[]; formPauseExtra=0; renderPauseList();
+  document.getElementById('discount').value='';
+}
+document.getElementById('pauseAdd').onclick=function(){
+  if(guard()) return;
+  // новая пауза — с конца прошлой или с начала смены, на 15 минут; время потом правится
+  const last=formPauses[formPauses.length-1], base=(last&&last.e)||document.getElementById('time').value||khParts(nowMs()).t;
+  const [h,m]=base.split(':').map(Number), t=(h*60+m+15)%1440;
+  formPauses.push({s:base, e:z2(Math.floor(t/60))+':'+z2(t%60)});
+  tap(8); renderPauseList(); renderPreview();
+};
+document.getElementById('pauseList').addEventListener('input',function(e){
+  const f=e.target.closest('[data-fps]'); if(!f) return;
+  const row=f.closest('[data-fp]'); formPauses[Number(row.dataset.fp)][f.dataset.fps]=f.value;
+  renderPreview();
+  const sp=spansFromTimes(document.getElementById('date').value,document.getElementById('time').value,[formPauses[Number(row.dataset.fp)]])[0];
+  row.querySelector('.pd').textContent=sp?(pauseText(Math.round((sp.e-sp.s)/60e3))||'0 мин'):'—';
+});
+document.getElementById('pauseList').addEventListener('click',function(e){
+  const d=e.target.closest('[data-fpdel]'), x=e.target.closest('[data-fpx]');
+  if(!d&&!x) return;
+  if(d) formPauses.splice(Number(d.dataset.fpdel),1); else formPauseExtra=0;
+  tap(8); renderPauseList(); renderPreview();
+});
 const formDiscount=()=>Math.max(0,parseAmt(document.getElementById('discount').value));
 function renderPreview(){
   const c=calc(hours,selW.length,selC.length,document.getElementById('date').value,formDiscount());
@@ -1365,11 +1409,13 @@ function renderPreview(){
   document.getElementById('hval').textContent=hours;
   document.getElementById('hword').textContent=hourWord(hours);
   const t=document.getElementById('time').value;
+  const np=formSpans().length+(formPauseExtra?1:0);
   document.getElementById('window').innerHTML=(t?'<b>'+t+' → '+endTime(t,hours,pm)+'</b>':'время не указано')+
-    (pm?' · пауза '+pauseText(pm):'');
-  document.getElementById('save').disabled=!(hours>=1&&selW.length>=1&&document.getElementById('date').value);
+    (pm?' · пауза '+pauseText(pm)+(np>1?' ('+np+')':''):'');
+  document.getElementById('save').disabled=!(hours>=1&&selW.length>=1&&document.getElementById('date').value)||formPauseHalf();
   document.getElementById('save').textContent = editId ? 'Сохранить изменения' : 'Записать смену';
   document.getElementById('hint').textContent = !document.getElementById('date').value ? 'Поставь дату'
+    : formPauseHalf() ? 'У паузы не хватает начала или конца'
     : !selW.length ? 'Отметь, кто работал'
     : !selC.length ? 'Кастомер не выбран — запишется без привязки'
     : 'Смена запишется как неоплаченная — отметишь в истории';
@@ -1602,6 +1648,8 @@ function entryHtml(e){
   if(e.kind==='shift'){
     top=e.hours+' '+hourWord(e.hours)+' · '+e.workerIds.map(wName).map(esc).join(', ');
     const pm=e.pause_min||0, disc=Number(e.discount)||0;
+    // часть паузы без времени — только у старых записей, где пауза была одной суммой
+    const untimed=pm-Math.round(pauseSpans(e.pause_log).reduce((a,p)=>a+spanSec(p,p.s),0)/60);
     sub=(e.start_time?hhmm(e.start_time)+'–'+shiftEnd(e):'без времени')+
         (pm?' · пауза '+pauseText(pm):'')+(disc?' · скидка '+money(disc):'')+' · '+
         (e.customerIds.length?e.customerIds.map(cName).map(esc).join(' + '):'без кастомера')+
@@ -1609,6 +1657,7 @@ function entryHtml(e){
     sum=money(e.total);
     detail=(pm?'<div>пауза — '+pauseText(pm)+', не оплачивается</div>':'')+
            pauseSpans(e.pause_log).map(p=>'<div>&nbsp;&nbsp;⏸ '+spanText(p,0)+'</div>').join('')+
+           (untimed>0 && pauseSpans(e.pause_log).length ? '<div>&nbsp;&nbsp;⏸ без времени · '+pauseText(untimed)+'</div>' : '')+
            (disc?'<div>скидка — '+money(disc)+' (по тарифу '+money(e.total+disc)+')</div>':'')+
            '<div>в кассу — '+money(e.kassa)+'</div><div>рабочим — по '+money(e.per_worker)+'</div>'+
            (e.custLinks||[]).map(function(l){
@@ -1693,10 +1742,9 @@ function bump(){
 }
 document.getElementById('minus').onclick=()=>{ if(hours>1){hours--;bump();} };
 document.getElementById('plus').onclick =()=>{ if(hours<24){hours++;bump();} };
-document.getElementById('time').oninput=renderPreview;
-document.getElementById('pause').oninput=renderPreview;
+document.getElementById('time').oninput=function(){ renderPauseList(); renderPreview(); };
 document.getElementById('discount').oninput=renderPreview;
-document.getElementById('date').oninput=function(){ renderStrip(); renderPreview(); };
+document.getElementById('date').oninput=function(){ renderStrip(); renderPauseList(); renderPreview(); };
 function toggle(a,n){ const i=a.indexOf(n); if(i<0) a.push(n); else a.splice(i,1); }
 document.getElementById('wchips').onclick=e=>{ const b=e.target.closest('.chip'); if(!b||guard())return;
   tap(8); toggle(selW,b.dataset.id); renderChips(); renderPreview(); };
@@ -1712,10 +1760,9 @@ document.getElementById('save').onclick=async function(){
     start_time:document.getElementById('time').value||null,
     hours:hours, total:c.total, kassa:c.kassa,
     per_worker:c.perWorker, per_customer:c.perCustomer,
-    pause_min:formPause(), discount:c.discount,
+    pause_min:formPause(), pause_log:formPauseLog(), discount:c.discount,
     note:document.getElementById('note').value.trim()||null
   };
-  if(wasEdit && row.pause_min!==editPauseMin) row.pause_log=[];
   btn.disabled=true;
 
   if(!online()){
@@ -2237,8 +2284,10 @@ function startEdit(id){
   selW=sh.workerIds.slice();
   selC=(sh.custLinks||[]).map(l=>l.id);
   document.getElementById('note').value=sh.note||'';
-  document.getElementById('pause').value=pauseInput(sh.pause_min||0);
-  editPauseMin=sh.pause_min||0;
+  const sp=pauseSpans(sh.pause_log);
+  formPauses=sp.map(p=>({s:khParts(p.s).t, e:p.e?khParts(p.e).t:''}));
+  formPauseExtra=Math.max(0,(sh.pause_min||0)-Math.round(sp.reduce((a,p)=>a+((p.e||p.s)-p.s),0)/60e3));
+  renderPauseList();
   document.getElementById('discount').value=Number(sh.discount)>0 ? String(Number(sh.discount)).replace('.',',') : '';
   const p=String(sh.work_date).split('-');
   document.getElementById('editWhen').textContent =
@@ -2609,7 +2658,7 @@ async function liveSave(id,btn){
 // GitHub Pages разрешает телефону держать страницу в кэше до 10 минут, а Telegram на iPhone
 // сервис-воркер не запускает. Поэтому сами спрашиваем, не вышла ли версия новее, и перезагружаемся.
 // При каждой выкладке APP_VERSION меняется.
-const APP_VERSION='2026-10-15.2';
+const APP_VERSION='2026-10-15.3';
 async function checkUpdate(){
   try{
     const r=await fetch('index.html?nc='+Date.now(),{cache:'no-store'});
