@@ -583,6 +583,10 @@
     <div class="fsec">
       <div class="fhdr"><span class="lbl">Кто</span></div>
       <div class="chips" id="wchips"></div>
+      <div id="workersBox" style="display:none">
+        <span class="cap" id="workersCap">Кто во сколько работал — пусто = вся смена</span>
+        <div id="workersList"></div>
+      </div>
       <span class="cap">Кастомеры — счет делится поровну</span>
       <div class="chips" id="cchips"></div>
       <div id="playersBox" style="display:none">
@@ -991,6 +995,17 @@ function livePlayerSpans(l,now){
   });
 }
 const livePauseSpans=(l,now)=>pauseSpans(l.pause_log).map(p=>({s:p.s,e:p.e||(l.finished_at?Date.parse(l.finished_at):now)}));
+// Операторы тоже могут меняться по ходу смены: их половина делится по времени работы (паузы не считаются).
+// Кто без отметок «заступил / сменился» — работал всю смену.
+function liveWorkerSpans(l,now){
+  const end=l.finished_at?Date.parse(l.finished_at):now, start=Date.parse(l.started_at), log=Array.isArray(l.worker_log)?l.worker_log:[];
+  return (l.worker_ids||[]).map(function(id){
+    const mine=log.filter(x=>x.id===id).map(x=>({s:Date.parse(x.s), e:x.e?Date.parse(x.e):end}));
+    return {id:id, spans:spanCut(mine.length?mine:[{s:start,e:end}],start,end)};
+  });
+}
+// доли операторов: операторская половина по времени работы, копейки сходятся
+const splitWorkers=(pool,workers,pauses)=>splitPlayers(pool,workers,pauses,null);
 // поля пауз на экране итога → новый журнал; дату каждой границы берем ближайшую к прежней
 function pausesFromInputs(vals,oldLog,startMs){
   const old=pauseSpans(oldLog);
@@ -1045,6 +1060,7 @@ function applyPending(){
         total:q.row.total, kassa:q.row.kassa,
         per_worker:q.row.per_worker, per_customer:q.row.per_customer,
         workerIds:q.workers.slice(), customerIds:q.customers.slice(),
+        workerLinks:(q.wlinks||[]).map(w=>({id:w.worker_id,share:w.share,spans:w.spans||[]})),
         custLinks:(q.links||q.customers.map(id=>({customer_id:id,amount:q.row.per_customer})))
           .map(l=>({id:l.customer_id,paid:false,amount:l.amount,share:l.share,spans:l.spans||[],paid_by:l.paid_by||null})),
         created_at:q.at });
@@ -1063,7 +1079,8 @@ async function flushQueue(){
       if(q.t==='shift'){
         const {data,error}=await sb.from('shifts').insert(q.row).select('id').single();
         if(error) throw error;
-        const links=[sb.from('shift_workers').insert(q.workers.map(id=>({shift_id:data.id,worker_id:id})))];
+        const links=[sb.from('shift_workers').insert((q.wlinks||q.workers.map(id=>({worker_id:id})))
+          .map(w=>Object.assign({shift_id:data.id},w)))];
         if(q.customers.length) links.push(sb.from('shift_customers').insert(
           (q.links||q.customers.map(id=>({customer_id:id,amount:q.row.per_customer})))
             .map(l=>Object.assign({shift_id:data.id, paid:false}, l))));
@@ -1157,6 +1174,8 @@ async function loadAll(){
     per_worker:Number(x.per_worker), per_customer:Number(x.per_customer),
     pause_min:Number(x.pause_min)||0, discount:Number(x.discount)||0,
     workerIds:sw.filter(r=>r.shift_id===x.id).map(r=>r.worker_id),
+    workerLinks:sw.filter(r=>r.shift_id===x.id).map(r=>({id:r.worker_id,
+      share:r.share!=null?Number(r.share):null, spans:r.spans||[]})),
     custLinks:sc.filter(r=>r.shift_id===x.id)
       .map(r=>({id:r.customer_id,paid:r.paid===true,paid_at:r.paid_at||null,
                 amount:r.amount!=null?Number(r.amount):Number(x.per_customer),
@@ -1450,6 +1469,7 @@ function renderPauseList(){
 function clearExtras(){
   formPauses=[]; formPauseExtra=0; renderPauseList();
   formPlayers={}; formPayer=null; document.getElementById('playersList').dataset.key='';
+  formWorkers={}; document.getElementById('workersList').dataset.key='';
   document.getElementById('discount').value='';
 }
 
@@ -1461,6 +1481,49 @@ function formWindow(){
   const s=khToMs(d,t);
   return {d:d, s:s, e:s+(hours*60+formPause())*60e3};
 }
+// поля «с / до» (или «сел / встал») → отрезок внутри смены; пусто — вся смена
+function entrySpans(fp,w){
+  fp=fp||{};
+  if(!w) return [];
+  if(fp.orig && !fp.dirty) return spanCut(fp.orig,w.s,w.e);   // давняя смена: время как было записано
+  const s=fp.s?khAfter(w.d,fp.s,w.s):w.s, e=fp.e?khAfter(w.d,fp.e,s):w.e;
+  return spanCut([{s:s,e:e}],w.s,w.e);
+}
+// Операторы в форме: кто во сколько работал — их половина делится по времени
+let formWorkers={};
+function formWorkerSplit(pool){
+  const w=formWindow(), workers=selW.map(id=>({id:id, spans:entrySpans(formWorkers[id],w)}));
+  return {w:w, workers:workers, res:splitWorkers(pool,workers,w?formSpans():[])};
+}
+const workerRows=x=>x.res.map(r=>({worker_id:r.id, share:r.amount,
+  spans:spansToSave(x.workers.find(p=>p.id===r.id).spans,x.w)}));
+function renderWorkers(pool){
+  const box=document.getElementById('workersBox'), list=document.getElementById('workersList');
+  box.style.display=selW.length>1?'block':'none';
+  if(selW.length<2) return;
+  const x=formWorkerSplit(pool);
+  document.getElementById('workersCap').textContent = x.w ? 'Кто во сколько работал — пусто = вся смена'
+    : 'Операторы — поставь время начала смены, чтобы учесть, кто кого сменил';
+  const key=selW.join()+'|'+!!x.w;
+  if(list.dataset.key!==key){
+    list.dataset.key=key;
+    list.innerHTML=selW.map(function(id){
+      const fw=formWorkers[id]||{};
+      return '<div class="plrow" data-wk="'+id+'"><div class="top"><span>'+esc(wName(id))+'</span><b class="pa"></b></div>'+
+        (x.w?'<div class="times"><span>с</span><input type="time" data-wkf="s" value="'+(fw.s||'')+'">'+
+             '<span>до</span><input type="time" data-wkf="e" value="'+(fw.e||'')+'"></div>':'')+'</div>';
+    }).join('');
+  }
+  x.res.forEach(function(r){
+    const el=list.querySelector('[data-wk="'+r.id+'"] .pa'); if(el) el.textContent=money(r.amount)+(r.ms?' · '+clockHM(r.ms/1000):'');
+  });
+}
+document.getElementById('workersList').addEventListener('input',function(e){
+  const f=e.target.closest('[data-wkf]'); if(!f) return;
+  const id=f.closest('[data-wk]').dataset.wk, fw=formWorkers[id]=formWorkers[id]||{};
+  fw[f.dataset.wkf]=f.value; fw.dirty=true;
+  renderPreview();
+});
 function formPlayerSpans(id,w){
   const fp=formPlayers[id]||{};
   if(!w) return [];
@@ -1552,7 +1615,7 @@ function renderPreview(){
   document.getElementById('pvLine').innerHTML =
     (c.discount ? 'по тарифу '+money(c.full)+' − скидка <b>'+money(c.discount)+'</b><br>' : '') +
     'в кассу <b>'+money(c.kassa)+'</b>' +
-    (selW.length ? ' · рабочим по <b>'+money(c.perWorker)+'</b>' : '');
+    (selW.length ? workersLine(formWorkerSplit(c.total/2).res,c.perWorker) : '');
   document.getElementById('hval').textContent=hours;
   document.getElementById('hword').textContent=hourWord(hours);
   const t=document.getElementById('time').value;
@@ -1568,6 +1631,12 @@ function renderPreview(){
     : formPayer ? cName(formPayer)+' платит за тех, кто сидел с ним, — их долг перейдёт на него'
     : 'Смена запишется как неоплаченная — отметишь в истории';
   renderPlayers(c.total);
+  renderWorkers(c.total/2);
+}
+// «рабочим по X», а если работали разное время — у каждого своё
+function workersLine(res,even){
+  if(!res.length || res.every(r=>Math.abs(r.amount-even)<0.01)) return ' · рабочим по <b>'+money(even)+'</b>';
+  return ' · рабочим: '+res.map(r=>esc(wName(r.id))+' <b>'+money(r.amount)+'</b>').join(', ');
 }
 
 /* ======================= ИТОГИ ======================= */
@@ -1591,8 +1660,9 @@ function balances(){
     }
     inK += s.kassa * openShare;
     s.workerIds.forEach(id=>{
-      acc[id]=(acc[id]||0)+s.per_worker*openShare;
-      earned[id]=(earned[id]||0)+s.per_worker;
+      const wl=(s.workerLinks||[]).find(x=>x.id===id), mine=wl&&wl.share!=null?wl.share:s.per_worker;
+      acc[id]=(acc[id]||0)+mine*openShare;
+      earned[id]=(earned[id]||0)+mine;
     });
   });
   // Оплаты от игроков и долг до начала учета — общими суммами, как в заметках:
@@ -1790,6 +1860,16 @@ function renderList(){
   el.innerHTML=out;
 }
 
+// операторы в подробностях смены: одинаково — «рабочим по X», менялись — у каждого своё
+function workersDetail(e){
+  const wl=e.workerLinks||[], timed=wl.some(w=>w.share!=null&&(pauseSpans(w.spans).length||Math.abs(w.share-e.per_worker)>0.004));
+  if(!timed) return '<div>рабочим — по '+money(e.per_worker)+'</div>';
+  return wl.map(function(w){
+    const sp=pauseSpans(w.spans);
+    return '<div class="lnk">'+esc(wName(w.id))+' — '+money(w.share!=null?w.share:e.per_worker)+
+      (sp.length?' · работал '+sp.map(p=>khParts(p.s).t+'–'+(p.e?khParts(p.e).t:'…')).join(', '):'')+'</div>';
+  }).join('');
+}
 function entryHtml(e){
   const p=String(e.date).split('-'), open=(openId===e.id);
   const day='<div class="d"><b>'+Number(p[2])+'</b><span>'+MON[Number(p[1])-1]+'</span></div>';
@@ -1808,7 +1888,7 @@ function entryHtml(e){
            pauseSpans(e.pause_log).map(p=>'<div>&nbsp;&nbsp;⏸ '+spanText(p,0)+'</div>').join('')+
            (untimed>0 && pauseSpans(e.pause_log).length ? '<div>&nbsp;&nbsp;⏸ без времени · '+pauseText(untimed)+'</div>' : '')+
            (disc?'<div>скидка — '+money(disc)+' (по тарифу '+money(e.total+disc)+')</div>':'')+
-           '<div>в кассу — '+money(e.kassa)+'</div><div>рабочим — по '+money(e.per_worker)+'</div>'+
+           '<div>в кассу — '+money(e.kassa)+'</div>'+workersDetail(e)+
            (e.custLinks||[]).map(function(l){
              const amt=l.amount!=null?l.amount:e.per_customer;
              const sp=pauseSpans(l.spans), payer=(e.custLinks||[]).some(x=>x.paid_by===l.id);
@@ -1894,13 +1974,15 @@ function bump(){
   renderStrip(); renderPreview();
 }
 document.getElementById('minus').onclick=()=>{ if(hours>1){hours--;bump();} };
-document.getElementById('plus').onclick =()=>{ if(hours<24){hours++;bump();} };
+document.getElementById('plus').onclick =()=>{ if(hours<72){hours++;bump();} };
 document.getElementById('time').oninput=function(){ renderPauseList(); renderPreview(); };
 document.getElementById('discount').oninput=renderPreview;
 document.getElementById('date').oninput=function(){ renderStrip(); renderPauseList(); renderPreview(); };
 function toggle(a,n){ const i=a.indexOf(n); if(i<0) a.push(n); else a.splice(i,1); }
 document.getElementById('wchips').onclick=e=>{ const b=e.target.closest('.chip'); if(!b||guard())return;
-  tap(8); toggle(selW,b.dataset.id); renderChips(); renderPreview(); };
+  tap(8); toggle(selW,b.dataset.id);
+  if(selW.indexOf(b.dataset.id)<0) delete formWorkers[b.dataset.id];
+  renderChips(); renderPreview(); };
 document.getElementById('cchips').onclick=e=>{ const b=e.target.closest('.chip'); if(!b||guard())return;
   tap(8); toggle(selC,b.dataset.id);
   if(selC.indexOf(b.dataset.id)<0){ delete formPlayers[b.dataset.id]; if(formPayer===b.dataset.id) formPayer=null; }
@@ -1922,7 +2004,8 @@ document.getElementById('save').onclick=async function(){
 
   if(!online()){
     if(wasEdit){ btn.disabled=false; toast('Правка недоступна без интернета'); return; }
-    enqueue({t:'shift',row:row,workers:selW.slice(),customers:selC.slice(),links:playerLinks(formSplit(c.total),formPayer)});
+    enqueue({t:'shift',row:row,workers:selW.slice(),customers:selC.slice(),links:playerLinks(formSplit(c.total),formPayer),
+      wlinks:workerRows(formWorkerSplit(c.total/2))});
     selC=[]; document.getElementById('note').value=''; clearExtras();
     S.shifts=[]; S.ops=[];
     loadCache(); applyPending(); renderAll(); renderOffbar();
@@ -1949,7 +2032,7 @@ document.getElementById('save').onclick=async function(){
     sid=data.id;
   }
 
-  const links=[sb.from('shift_workers').insert(selW.map(id=>({shift_id:sid,worker_id:id})))];
+  const links=[sb.from('shift_workers').insert(workerRows(formWorkerSplit(c.total/2)).map(w=>Object.assign({shift_id:sid},w)))];
   if(selC.length) links.push(sb.from('shift_customers').insert(playerLinks(formSplit(c.total),formPayer).map(l=>
     Object.assign({shift_id:sid, paid:!!paidAt[l.customer_id], paid_at:paidAt[l.customer_id]||null}, l))));
   const bad=(await Promise.all(links)).find(r=>r.error);
@@ -2436,6 +2519,11 @@ function startEdit(id){
   document.getElementById('date').value=sh.work_date;
   document.getElementById('time').value=hhmm(sh.start_time);
   selW=sh.workerIds.slice();
+  formWorkers={}; document.getElementById('workersList').dataset.key='';
+  (sh.workerLinks||[]).forEach(function(w){
+    const sp=pauseSpans(w.spans).map(p=>({s:p.s,e:p.e||p.s}));
+    if(sp.length) formWorkers[w.id]={orig:sp, s:khParts(sp[0].s).t, e:khParts(sp[sp.length-1].e).t, dirty:false};
+  });
   selC=(sh.custLinks||[]).map(l=>l.id);
   formPlayers={}; formPayer=null; document.getElementById('playersList').dataset.key='';
   (sh.custLinks||[]).forEach(function(l){
@@ -2574,6 +2662,37 @@ function liveCustHtml(l){
       esc(c.name)+(was?' · ушёл':'')+'</button>';
   }).join('') : '<div class="empty">Список кастомеров пуст</div>')+'</div>'+(l.finished_at?'':pres);
 }
+// Операторы живой смены: нажал на работающего — «сменился», на другого — «заступил» (время сервера)
+const wLog=l=>Array.isArray(l.worker_log)?l.worker_log:[];
+const liveWorking=(l,id)=>wLog(l).some(x=>x.id===id&&!x.e) ||
+  (!l.finished_at && (l.worker_ids||[]).indexOf(id)>=0 && !wLog(l).some(x=>x.id===id));
+function liveWorkPresence(l){
+  if(!wLog(l).length) return '';
+  return (l.worker_ids||[]).map(function(id){
+    const mine=wLog(l).filter(x=>x.id===id);
+    return esc(wName(id))+' '+(mine.length ? mine.map(x=>x.e ? khParts(Date.parse(x.s)).t+'–'+khParts(Date.parse(x.e)).t
+      : 'с '+khParts(Date.parse(x.s)).t).join(', ') : 'вся смена');
+  }).join(' · ');
+}
+function liveWorkersHtml(l){
+  const pres=liveWorkPresence(l), line=pres?'<div class="lpauses" style="text-align:left">'+pres+'</div>':'';
+  if(locked) return line;
+  const ids=l.worker_ids||[], list=S.workers.filter(w=>w.active||ids.indexOf(w.id)>=0);
+  return '<span class="cap">Операторы — нажми, когда кто заступил или сменился</span><div class="chips">'+list.map(function(w){
+    const on=liveWorking(l,w.id), was=!on&&ids.indexOf(w.id)>=0;
+    return '<button class="chip'+(was?' gone':'')+'" data-lwk="'+l.id+'|'+w.id+'" aria-pressed="'+on+'">'+esc(w.name)+(was?' · сменился':'')+'</button>';
+  }).join('')+'</div>'+line;
+}
+function liveWorkerRowsHtml(l){
+  return wLog(l).map((x,i)=>'<div class="prow" data-wi="'+i+'"><span class="pn">'+esc(wName(x.id))+'</span>'+
+    '<input type="time" data-wf="s" value="'+khParts(Date.parse(x.s)).t+'"><span>–</span>'+
+    '<input type="time" data-wf="e" value="'+(x.e?khParts(Date.parse(x.e)).t:'')+'"></div>').join('');
+}
+function liveWorkerSplit(l,pool,now){
+  const workers=liveWorkerSpans(l,now);
+  return {w:{s:Date.parse(l.started_at), e:l.finished_at?Date.parse(l.finished_at):now}, workers:workers,
+          res:splitWorkers(pool,workers,livePauseSpans(l,now))};
+}
 // один платит за всех, кто сидел с ним: его можно отметить по ходу или в конце
 function livePayerHtml(l){
   const ids=l.customer_ids||[];
@@ -2618,7 +2737,7 @@ function liveCalcHtml(l){
     (c.discount?row('По тарифу',money(c.full))+row('Скидка','−'+money(c.discount)):'')+
     row('Сумма',money(c.total),'big')+
     row('В кассу',money(c.kassa))+
-    (nw?row(nw>1?'Каждому оператору':'Оператору',money(c.perWorker)):'')+
+    (nw?liveWorkerSplit(l,c.total/2,nowMs()).res.map(r=>row(esc(wName(r.id)),money(r.amount)+(wLog(l).length&&r.ms?' · '+clockHM(r.ms/1000):''))).join(''):'')+
     liveSplit(l,c.total,nowMs()).res.map(r=>row(esc(cName(r.id)),esc(playerNote(r,l.payer_id)))).join('')+
     (x.h<1?'<span class="warn">Меньше 30 минут — записывать нечего. Вернись к смене или отмени её.</span>'
       : !nc?'<span class="warn">Игроки не выбраны — смена запишется без привязки к игроку.</span>':'')+
@@ -2638,6 +2757,7 @@ function liveCardHtml(l){
         '<span class="cap">Паузы — не оплачиваются</span><div data-plist="'+l.id+'">'+pauseRowsHtml(l)+'</div>'+
         '<label class="field"><span>Скидка, $</span><input type="text" data-lf="disc" inputmode="decimal" placeholder="0" value="'+
           (Number(l.discount)?String(Number(l.discount)).replace('.',','):'')+'"></label>')+
+      (locked||!wLog(l).length ? '' : '<span class="cap">Кто во сколько работал</span><div data-wklist="'+l.id+'">'+liveWorkerRowsHtml(l)+'</div>')+
       '<span class="cap">Игроки — нажми, чтобы добавить или убрать</span>'+liveCustHtml(l)+
       (locked||!liveLog(l).length ? '' : '<span class="cap">Кто во сколько сидел</span><div data-pllist="'+l.id+'">'+livePlayersRowsHtml(l)+'</div>')+
       livePayerHtml(l)+
@@ -2658,6 +2778,7 @@ function liveCardHtml(l){
     '<div class="ltimer" data-tick="'+l.id+'">'+clock(livePlayed(l,nowMs()))+'</div>'+
     '<div class="lsum" data-tsum="'+l.id+'"></div>'+
     '<div class="lpauses" data-tpause="'+l.id+'"></div>'+
+    liveWorkersHtml(l)+
     '<span class="cap">Игроки'+(locked?'':' — нажми, когда сел и когда встал')+'</span>'+liveCustHtml(l)+livePayerHtml(l)+
     '<div class="lbtns w-only">'+
       '<button class="btn sec" data-lact="'+(paused?'resume':'pause')+'" data-id="'+l.id+'">'+(paused?'Продолжить':'Пауза')+'</button>'+
@@ -2776,6 +2897,22 @@ document.getElementById('liveList').addEventListener('click',async e=>{
     toast(act==='sit'?cName(cid)+' сел'+(l.finished_at?'':' · '+khParts(nowMs()).t):act==='leave'?cName(cid)+' встал · '+khParts(nowMs()).t:cName(cid)+' убран');
     return;
   }
+  const wk=e.target.closest('[data-lwk]');
+  if(wk){
+    if(!liveReady()) return;
+    const [id,wid]=wk.dataset.lwk.split('|'), l=(S.live||[]).find(x=>x.id===id); if(!l) return;
+    const act=liveWorking(l,wid)?'off':'on';
+    if(act==='off' && (l.worker_ids||[]).filter(x=>liveWorking(l,x)).length<2 &&
+       !await ask(wName(wid)+' — последний оператор на смене. Отметить, что он сменился?')) return;
+    tap(8); wk.disabled=true;
+    const {data,error}=await sb.rpc('live_worker',{p_id:id,p_worker:wid,p_action:act});
+    wk.disabled=false;
+    if(error) return fail(error,'Не сохранилось');
+    if(data && data.id) putLive(data); else await loadAll();
+    renderLive();
+    toast(wName(wid)+(act==='on'?' заступил · ':' сменился · ')+khParts(nowMs()).t);
+    return;
+  }
   const payerBtn=e.target.closest('[data-lpayer]');
   if(payerBtn){
     if(!liveReady()) return;
@@ -2826,6 +2963,25 @@ async function savePauses(card,l,spans){
 }
 // правка итога: время, паузы, скидка, комментарий — пишем в базу и пересчитываем
 document.getElementById('liveList').addEventListener('change',async e=>{
+  const wf=e.target.closest('[data-wf]');
+  if(wf){
+    const card=wf.closest('[data-live]'), l=(S.live||[]).find(x=>x.id===card.dataset.live);
+    if(!l || !liveReady()) return;
+    const old=wLog(l);
+    const log=[...card.querySelectorAll('[data-wi]')].map(function(r){
+      const o=old[Number(r.dataset.wi)], sv=r.querySelector('[data-wf="s"]').value, ev=r.querySelector('[data-wf="e"]').value;
+      const s=sv?khNear(sv,Date.parse(o.s)):Date.parse(o.s);
+      return {id:o.id, s:s, e:ev?khNear(ev,o.e?Date.parse(o.e):s):null};
+    });
+    if(log.some(x=>x.e!==null && !(x.e>x.s))){ toast('Конец работы должен быть позже начала'); card.dataset.sig=''; renderLive(); return; }
+    const out=log.map(x=>({id:x.id, s:new Date(x.s).toISOString(), e:x.e?new Date(x.e).toISOString():null}));
+    const {data,error}=await sb.from('live_shifts').update({worker_log:out}).eq('id',l.id).select().single();
+    if(error) return fail(error,'Время операторов не сохранилось');
+    putLive(data);
+    card.querySelector('[data-lcalc]').innerHTML=liveCalcHtml(data);
+    card.dataset.sig=liveSig(data);
+    return;
+  }
   const cf=e.target.closest('[data-cf]');
   if(cf){
     const card=cf.closest('[data-live]'), l=(S.live||[]).find(x=>x.id===card.dataset.live);
@@ -2872,7 +3028,8 @@ document.getElementById('liveList').addEventListener('change',async e=>{
 async function liveSave(id,btn){
   const l=(S.live||[]).find(x=>x.id===id);
   if(!l || !liveReady()) return;
-  const now=nowMs(), x=liveSummary(l,now), ws=l.worker_ids||[];
+  const now=nowMs(), x=liveSummary(l,now);
+  const ws=workerRows(liveWorkerSplit(l,x.c.total/2,now)).map(w=>({id:w.worker_id, share:w.share, spans:w.spans}));
   const cs=playerLinks(liveSplit(l,x.c.total,now),l.payer_id)
     .map(p=>({id:p.customer_id, amount:p.amount, share:p.share, spans:p.spans, paid_by:p.paid_by}));
   if(!ws.length){ toast('В смене нет операторов'); return; }
@@ -2895,7 +3052,7 @@ async function liveSave(id,btn){
 // GitHub Pages разрешает телефону держать страницу в кэше до 10 минут, а Telegram на iPhone
 // сервис-воркер не запускает. Поэтому сами спрашиваем, не вышла ли версия новее, и перезагружаемся.
 // При каждой выкладке APP_VERSION меняется.
-const APP_VERSION='2026-10-15.4';
+const APP_VERSION='2026-10-27.1';
 async function checkUpdate(){
   try{
     const r=await fetch('index.html?nc='+Date.now(),{cache:'no-store'});
