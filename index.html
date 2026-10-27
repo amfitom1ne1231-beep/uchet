@@ -587,7 +587,7 @@
         <span class="cap" id="workersCap">Кто во сколько работал — пусто = вся смена</span>
         <div id="workersList"></div>
       </div>
-      <span class="cap">Кастомеры — счет делится поровну</span>
+      <span class="cap">Кастомеры — счет делится по времени</span>
       <div class="chips" id="cchips"></div>
       <div id="playersBox" style="display:none">
         <span class="cap" id="playersCap">Кто во сколько сидел — пусто = вся смена</span>
@@ -837,6 +837,7 @@ function showText(title,txt){
 let S={workers:[],customers:[],shifts:[],ops:[],live:[]};
 let user=null, isOwner=false, canWrite=false, locked=true;
 let hours=6, selW=[], selC=[], period='m', opCtx=null, openId=null, curTab=0, editId=null, editPaid={};
+let shiftSaving=false, opSaving=false;   // идет запись — второй тап и перерисовка не откроют кнопку
 let booting=true, openDebt=null;
 const skeleton=n=>Array(n).fill(
   '<div class="sk"><i class="a"></i><div class="b"><i></i><i></i></div><i class="c"></i></div>').join('');
@@ -870,7 +871,7 @@ function pauseText(min){
 function money(v){
   const r=Math.round(Number(v)*100)/100;
   const s=String(Math.abs(r)).replace('.',',').split(',');
-  return (r<0?'−':'')+s[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')+(s[1]?','+s[1]:'')+' $';
+  return (r<0?'−':'')+s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0')+(s[1]?','+s[1]:'')+'\u00a0$';
 }
 const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 function hourWord(n){const a=n%10,b=n%100;
@@ -902,7 +903,7 @@ const khToMs=(d,t)=> Date.parse(d+'T'+(t||'00:00')+':00Z')-KH_OFF;
 const today=()=>khParts(nowMs()).d;
 function inPeriod(ds){
   if(period==='a') return true;
-  return (Date.parse(today()+'T00:00Z')-Date.parse(ds+'T00:00Z'))/86400000 <= (period==='w'?7:30);
+  return (Date.parse(today()+'T00:00Z')-Date.parse(ds+'T00:00Z'))/86400000 < (period==='w'?7:30);
 }
 
 // Живая смена: отыграно (сек) = от старта до конца/сейчас минус все паузы, включая идущую
@@ -942,7 +943,8 @@ function spansFromTimes(d,t,rows){
 /* ---- игроки: кто сколько сидел и кто за кого платит ---- */
 // отрезки времени [{s,e}] в мс: длина, обрезка по смене, вычитание пауз, пересечение
 const spanLen=list=>list.reduce((a,p)=>a+Math.max(0,p.e-p.s),0);
-const spanCut=(list,a,b)=>list.map(p=>({s:Math.max(p.s,a),e:Math.min(p.e,b)})).filter(p=>p.e>p.s);
+const spanCut=(list,a,b)=>list.map(p=>({s:Math.max(p.s,a),e:Math.min(p.e,b)})).filter(p=>p.e>p.s)
+  .sort((x,y)=>x.s-y.s).reduce((o,p)=>{ const l=o[o.length-1]; if(l&&p.s<=l.e) l.e=Math.max(l.e,p.e); else o.push(p); return o; },[]);
 function spanMinus(list,holes){
   let out=list.slice();
   (holes||[]).forEach(function(h){
@@ -1475,18 +1477,24 @@ function clearExtras(){
 
 // Игроки в форме: во сколько сел и встал (пусто — вся смена) и кто платит за всех, кто сидел с ним
 let formPlayers={}, formPayer=null;
+// правка смены из таймера: к оплате часы округлены, а конец — настоящий, пока время смены не трогали
+let editEnd=null;
+const whenKey=()=>document.getElementById('date').value+'|'+document.getElementById('time').value+'|'+hours+'|'+formPause();
 function formWindow(){
   const d=document.getElementById('date').value, t=document.getElementById('time').value;
   if(!d||!t) return null;
-  const s=khToMs(d,t);
-  return {d:d, s:s, e:s+(hours*60+formPause())*60e3};
+  const s=khToMs(d,t), w={d:d, s:s, e:s+(hours*60+formPause())*60e3};
+  if(editEnd && editEnd.key===whenKey()) w.e=editEnd.e;
+  return w;
 }
 // поля «с / до» (или «сел / встал») → отрезок внутри смены; пусто — вся смена
 function entrySpans(fp,w){
   fp=fp||{};
   if(!w) return [];
   if(fp.orig && !fp.dirty) return spanCut(fp.orig,w.s,w.e);   // давняя смена: время как было записано
-  const s=fp.s?khAfter(w.d,fp.s,w.s):w.s, e=fp.e?khAfter(w.d,fp.e,s):w.e;
+  let s=fp.s?khAfter(w.d,fp.s,w.s):w.s;
+  if(s>w.e && w.s+864e5-s<=3*3600e3) s=w.s;   // «сел 21:55» при начале в 22:00 — это с начала, а не завтра
+  const e=fp.e?khAfter(w.d,fp.e,s):w.e;
   return spanCut([{s:s,e:e}],w.s,w.e);
 }
 // Операторы в форме: кто во сколько работал — их половина делится по времени
@@ -1524,13 +1532,7 @@ document.getElementById('workersList').addEventListener('input',function(e){
   fw[f.dataset.wkf]=f.value; fw.dirty=true;
   renderPreview();
 });
-function formPlayerSpans(id,w){
-  const fp=formPlayers[id]||{};
-  if(!w) return [];
-  if(fp.orig && !fp.dirty) return spanCut(fp.orig,w.s,w.e);   // давняя смена: время как было записано
-  const s=fp.s?khAfter(w.d,fp.s,w.s):w.s, e=fp.e?khAfter(w.d,fp.e,s):w.e;
-  return spanCut([{s:s,e:e}],w.s,w.e);
-}
+const formPlayerSpans=(id,w)=>entrySpans(formPlayers[id],w);
 function formSplit(total){
   const w=formWindow(), players=selC.map(id=>({id:id, spans:formPlayerSpans(id,w)}));
   return {w:w, players:players, res:splitPlayers(total,players,w?formSpans():[],formPayer)};
@@ -1622,7 +1624,7 @@ function renderPreview(){
   const np=formSpans().length+(formPauseExtra?1:0);
   document.getElementById('window').innerHTML=(t?'<b>'+t+' → '+endTime(t,hours,pm)+'</b>':'время не указано')+
     (pm?' · пауза '+pauseText(pm)+(np>1?' ('+np+')':''):'');
-  document.getElementById('save').disabled=!(hours>=1&&selW.length>=1&&document.getElementById('date').value)||formPauseHalf();
+  document.getElementById('save').disabled=shiftSaving||!(hours>=1&&selW.length>=1&&document.getElementById('date').value)||formPauseHalf();
   document.getElementById('save').textContent = editId ? 'Сохранить изменения' : 'Записать смену';
   document.getElementById('hint').textContent = !document.getElementById('date').value ? 'Поставь дату'
     : formPauseHalf() ? 'У паузы не хватает начала или конца'
@@ -1689,8 +1691,8 @@ function renderSummary(){
   const list=S.workers.filter(w=>w.active||Math.abs((b.acc[w.id]||0)-(b.paid[w.id]||0))>0.005);
   const kassaRow=
     '<div class="row kassa"><div class="n">'+
-      '<div class="nm">Касса<span class="tag">половина смены</span></div>'+
-      '<div class="sub">'+(b.outK>0.005?'вычтено выдач '+money(b.outK):'закроется, когда игроки заплатят')+'</div></div>'+
+      '<div class="nm">Касса</div>'+
+      '<div class="sub wrap">половина смены · '+(b.outK>0.005?'вычтено выдач '+money(b.outK):'закроется, когда игроки заплатят')+'</div></div>'+
     '<div class="b">'+money(b.kassa)+'</div>'+
     '<button class="pill w-only" data-exp="1">Выдать</button></div>';
 
@@ -1700,7 +1702,7 @@ function renderSummary(){
     return '<div class="row'+(settled?' settled':'')+'"><div class="n">'+
       '<div class="nm">'+esc(w.name)+(w.is_me?'<span class="tag">я</span>':'')+
       (w.active?'':'<span class="tag">архив</span>')+'</div>'+
-      '<div class="sub">'+((b.paid[w.id]||0)>0.005
+      '<div class="sub wrap">'+((b.paid[w.id]||0)>0.005
           ? 'выплачено вперёд '+money(b.paid[w.id])
           : 'за неоплаченные смены')+'</div></div>'+
       '<div class="b">'+money(bal)+'</div>'+
@@ -1762,7 +1764,9 @@ function renderSummary(){
     '<div class="st"><div class="v">'+money(earned)+'</div><div class="c">заработано</div></div>';
 
   const by={};
-  sh.forEach(s=>s.customerIds.forEach(id=>{ if(!by[id])by[id]={sum:0,n:0}; by[id].sum+=s.per_customer; by[id].n++; }));
+  // своя доля игры (по времени); кто платил за других — тут без чужих денег
+  sh.forEach(s=>(s.custLinks||[]).forEach(l=>{ const id=l.id; if(!by[id])by[id]={sum:0,n:0};
+    by[id].sum+=l.share!=null?l.share:l.amount; by[id].n++; }));
   const keys=Object.keys(by).sort((x,y)=>by[y].sum-by[x].sum);
   document.getElementById('custTotals').innerHTML = keys.length
     ? keys.map(id=>'<div class="lrow"><span class="nm">'+esc(cName(id))+'</span>'+
@@ -1989,8 +1993,12 @@ document.getElementById('cchips').onclick=e=>{ const b=e.target.closest('.chip')
   renderChips(); renderPreview(); };
 
 document.getElementById('save').onclick=async function(){
-  if(guard())return;
-  const btn=this, wasEdit=!!editId;
+  if(guard()||shiftSaving)return;
+  shiftSaving=true;
+  try{ await saveShift(this); } finally{ shiftSaving=false; }
+};
+async function saveShift(btn){
+  const wasEdit=!!editId;
   const c=calc(hours,selW.length,selC.length,document.getElementById('date').value,formDiscount());
   const row={
     work_date:document.getElementById('date').value,
@@ -2000,6 +2008,7 @@ document.getElementById('save').onclick=async function(){
     pause_min:formPause(), pause_log:formPauseLog(), discount:c.discount,
     note:document.getElementById('note').value.trim()||null
   };
+  const fw=formWindow(); row.ended_at=fw?new Date(fw.e).toISOString():null;
   btn.disabled=true;
 
   if(!online()){
@@ -2054,7 +2063,7 @@ document.getElementById('save').onclick=async function(){
   if(!reduce()){ btn.classList.remove('done'); void btn.offsetWidth; btn.classList.add('done'); }
   setTimeout(function(){ btn.classList.remove('done'); renderPreview(); },1500);
   toast(wasEdit ? 'Смена изменена' : 'Смена на '+money(c.total)+' записана');
-};
+}
 
 document.getElementById('periodSeg').onclick=e=>{
   const b=e.target.closest('button'); if(!b)return;
@@ -2310,8 +2319,12 @@ document.getElementById('opQuick').onclick=e=>{
   document.getElementById('opAmt').value=String(Math.round(Number(b.dataset.q)*100)/100).replace('.',',');
   opSplit();
 };
-document.getElementById('opSave').onclick=async()=>{
-  if(guard())return;
+document.getElementById('opSave').onclick=async function(){
+  if(guard()||opSaving)return;
+  opSaving=true; this.disabled=true;
+  try{ await saveOp(); } finally{ opSaving=false; this.disabled=false; }
+};
+async function saveOp(){
   const amt=parseAmt(document.getElementById('opAmt').value);
   if(!amt||amt<=0){ toast('Введи сумму'); return; }
   const opRow={
@@ -2333,7 +2346,7 @@ document.getElementById('opSave').onclick=async()=>{
   toast(opCtx.kind==='payout' ? 'Выплата '+money(amt)+' записана'
     : opCtx.kind==='income' ? 'Оплата записана: операторам '+money(amt)+', в кассу '+money(amt)
     : 'Выдача кассы '+money(amt)+' записана');
-};
+}
 
 /* ======================= СПИСКИ: ПРАВКА ======================= */
 async function renameIn(table,id,cur){
@@ -2420,7 +2433,8 @@ if(TG){
   document.getElementById('dlJson').textContent='Прислать копию в чат (.json)';
 }
 function csvText(){
-  const q=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const q=v=>{ let t=String(v==null?'':v); if(typeof v==='string' && /^[=+\-@\t\r]/.test(t)) t="'"+t;
+    return '"'+t.replace(/"/g,'""')+'"'; };
   const rows=[['Тип','Дата','Начало','Конец','Часы','Рабочие','Кастомеры',
                'Сумма','В кассу','Каждому рабочему','С кастомера','Оплата','Заметка','Пауза, мин','Скидка','Паузы']];
   entries().slice().reverse().forEach(e=>{
@@ -2542,15 +2556,22 @@ function startEdit(id){
     'от '+Number(p[2])+' '+MON[Number(p[1])-1]+(sh.start_time?', '+hhmm(sh.start_time):'');
   document.getElementById('editBar').style.display='flex';
   openId=null;
+  // конец смены: записанный, а у старых смен из таймера — по самому позднему отрезку, если он позже
+  const s0=khToMs(sh.work_date,hhmm(sh.start_time)||'00:00'), e0=s0+(sh.hours*60+(sh.pause_min||0))*60e3;
+  const last=[].concat(...(sh.workerLinks||[]).map(w=>pauseSpans(w.spans)), ...(sh.custLinks||[]).map(l=>pauseSpans(l.spans)),
+    pauseSpans(sh.pause_log)).reduce((a,p)=>Math.max(a,p.e||p.s),0);
+  const end=sh.ended_at?Date.parse(sh.ended_at):(last>e0?last:0);
+  editEnd=sh.start_time&&end ? {key:whenKey(), e:end} : null;
   renderStrip(); renderChips(); renderPreview(); renderList();
   goTab('new');
 }
 function stopEdit(){
-  editId=null;
+  editId=null; editEnd=null;
   document.getElementById('editBar').style.display='none';
   document.getElementById('note').value=''; clearExtras();
-  selC=[];
-  renderChips(); renderPreview();
+  selC=[]; hours=6; resetWhen();
+  const me=S.workers.find(w=>w.is_me&&w.active); selW=(!locked&&me)?[me.id]:[];
+  renderStrip(); renderChips(); renderPreview();
 }
 document.getElementById('editCancel').onclick=stopEdit;
 
@@ -2638,7 +2659,7 @@ function tap(ms){
 // Смен может идти несколько — у каждой своя карточка.
 let liveW=null;   // операторы для новой смены
 const liveRows=()=>(S.live||[]).slice().sort((a,b)=>Date.parse(a.started_at)-Date.parse(b.started_at));
-const liveWorkers=l=>(l.worker_ids||[]).map(wName).map(esc).join(', ')||'—';
+const liveWorkers=l=>(l.worker_ids||[]).filter(id=>l.finished_at||liveWorking(l,id)).map(wName).map(esc).join(', ')||'—';
 
 // Игроки живой смены: нажал — сел (время сервера), еще раз — встал. Кто сидел — видно со временем.
 const liveLog=l=>Array.isArray(l.customer_log)?l.customer_log:[];
@@ -2955,14 +2976,17 @@ async function savePauses(card,l,spans){
   if(error) return fail(error,'Паузы не сохранились');
   putLive(data);
   card.querySelector('[data-lcalc]').innerHTML=liveCalcHtml(data);
-  card.querySelectorAll('.prow').forEach(function(r,i){
+  card.querySelectorAll('.prow[data-pi]').forEach(function(r,i){
     const p=pauseSpans(data.pause_log)[i];
     if(p) r.querySelector('.pd').textContent=pauseText(Math.round(spanSec(p,nowMs())/60))||'<1 мин';
   });
   card.dataset.sig=liveSig(data);
 }
 // правка итога: время, паузы, скидка, комментарий — пишем в базу и пересчитываем
-document.getElementById('liveList').addEventListener('change',async e=>{
+// правка на карточке пишется в базу, а «Сохранить» ждет ее — иначе запишется прежняя скидка или время
+let livePending=Promise.resolve();
+document.getElementById('liveList').addEventListener('change',e=>{ livePending=liveEdit(e).catch(function(){}); });
+async function liveEdit(e){
   const wf=e.target.closest('[data-wf]');
   if(wf){
     const card=wf.closest('[data-live]'), l=(S.live||[]).find(x=>x.id===card.dataset.live);
@@ -3005,7 +3029,7 @@ document.getElementById('liveList').addEventListener('change',async e=>{
   if(pf){
     const card=pf.closest('[data-live]'), l=(S.live||[]).find(x=>x.id===card.dataset.live);
     if(!l || !liveReady()) return;
-    const vals=[...card.querySelectorAll('.prow')].map(r=>({s:r.querySelector('[data-pf="s"]').value, e:r.querySelector('[data-pf="e"]').value}));
+    const vals=[...card.querySelectorAll('.prow[data-pi]')].map(r=>({s:r.querySelector('[data-pf="s"]').value, e:r.querySelector('[data-pf="e"]').value}));
     return savePauses(card,l,pausesFromInputs(vals,l.pause_log,Date.parse(l.started_at)));
   }
   const f=e.target.closest('[data-lf]'); if(!f) return;
@@ -3017,15 +3041,19 @@ document.getElementById('liveList').addEventListener('change',async e=>{
   const s=(v('sd')===sp.d&&v('st')===sp.t) ? Date.parse(l.started_at) : khToMs(v('sd'),v('st'));
   const en=(v('ed')===ep.d&&v('et')===ep.t) ? Date.parse(l.finished_at) : khToMs(v('ed'),v('et'));
   if(!(en>s)){ toast('Конец должен быть позже начала'); card.dataset.sig=''; renderLive(); return; }
-  const patch={ started_at:new Date(s).toISOString(), finished_at:new Date(en).toISOString(),
-    discount:Math.max(0,parseAmt(v('disc'))), note:v('note').trim()||null };
+  // время пишем, только если его поменяли: иначе «Вернуться к смене» не узнает, кто ушел в момент «Закончить»
+  const patch={ discount:Math.max(0,parseAmt(v('disc'))), note:v('note').trim()||null };
+  if(s!==Date.parse(l.started_at)) patch.started_at=new Date(s).toISOString();
+  if(en!==Date.parse(l.finished_at)) patch.finished_at=new Date(en).toISOString();
   const {data,error}=await sb.from('live_shifts').update(patch).eq('id',id).select().single();
   if(error) return fail(error,'Не сохранилось');
   putLive(data);
   card.querySelector('[data-lcalc]').innerHTML=liveCalcHtml(data);
   card.dataset.sig=liveSig(data);
-});
+}
 async function liveSave(id,btn){
+  if(btn.disabled) return;
+  btn.disabled=true; await livePending; btn.disabled=false;
   const l=(S.live||[]).find(x=>x.id===id);
   if(!l || !liveReady()) return;
   const now=nowMs(), x=liveSummary(l,now);
@@ -3052,7 +3080,7 @@ async function liveSave(id,btn){
 // GitHub Pages разрешает телефону держать страницу в кэше до 10 минут, а Telegram на iPhone
 // сервис-воркер не запускает. Поэтому сами спрашиваем, не вышла ли версия новее, и перезагружаемся.
 // При каждой выкладке APP_VERSION меняется.
-const APP_VERSION='2026-10-27.1';
+const APP_VERSION='2026-10-28.1';
 async function checkUpdate(){
   try{
     const r=await fetch('index.html?nc='+Date.now(),{cache:'no-store'});
@@ -3073,12 +3101,16 @@ if('serviceWorker' in navigator){
   });
 }
 
-(function init(){
-  const n=khParts(nowMs()), hm=n.t.split(':');   // по Камбодже, а не по часам телефона
-  document.getElementById('bootWord').innerHTML='УЧЕТ'.split('').map((ch,i)=>
-    '<span style="animation-delay:'+(i*70)+'ms">'+ch+'</span>').join('');
+// форма — на сейчас по Камбодже, а не по часам телефона
+function resetWhen(){
+  const n=khParts(nowMs()), hm=n.t.split(':');
   document.getElementById('date').value=n.d;
   document.getElementById('time').value=hm[0]+':'+z2(Math.floor(Number(hm[1])/5)*5);
+}
+(function init(){
+  document.getElementById('bootWord').innerHTML='УЧЕТ'.split('').map((ch,i)=>
+    '<span style="animation-delay:'+(i*70)+'ms">'+ch+'</span>').join('');
+  resetWhen();
   applyLock(); renderStrip(); renderPreview();
   boot();
   checkUpdate();
