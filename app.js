@@ -1296,7 +1296,7 @@ function fanItems(){
 // «Новая смена»: люди выбираются один раз, а «Сейчас / Прошедшая» решает, что дальше
 function plusSheet(mode0){
   const fin=finishedLive()[0];
-  let mode=mode0||(fin?'past':'now'), selW=lastCrew(), selC=[], day=today(), ts=null, te=null;
+  let mode=mode0||(fin?'past':'now'), selW=lastCrew(), selC=[], day=today(), ts=null, te=null, autoT=false;
   const sh=openSheet({detent:mode==='past'?'full':'half',from:$('#plus'),onClose:()=>$('#plus').classList.remove('open')}); $('#plus').classList.add('open');
   sh.push({title:'Новая смена', render(b){
     const past=mode==='past';
@@ -1343,7 +1343,8 @@ function plusSheet(mode0){
     nx.onclick=()=>{ if(te-ts<30*60e3) return toast('Меньше 30 минут — записывать нечего',true);
       if(te>nowMs()+60e3) return toast('Конец ещё не наступил — идущую смену начни через «Сейчас»',true);
       manualLevel(sh,selW,selC,ts,te); };
-    if(ts==null) setTimeout(()=>{ if(b.isConnected&&ts==null&&sh.levels.length===1) b.querySelector('[data-t="s"]').click(); },mode0==='past'?520:60);
+    // начало открывается само один раз — дальше только по нажатию (иначе выбор людей и «Назад» снова открывали барабаны)
+    if(ts==null&&!autoT){ autoT=true; setTimeout(()=>{ if(b.isConnected&&ts==null&&sh.levels.length===1&&mode==='past'){ const x=sh.top().body.querySelector('[data-t="s"]'); if(x) x.click(); } },mode0==='past'?520:120); }
   }});
   return sh;
 }
