@@ -518,8 +518,9 @@ const RC=2*Math.PI*120;
 let liveIdx=0;
 function renderNow(){
   const sc=$('#scrNow');
-  const head='<div class="big"><div><h1>Учёт</h1><div class="sub">'+esc(longDate())+'</div></div></div>';
-  if(booting && !S.shifts.length && !S.live.length){ sc.innerHTML=head+'<div class="sk"></div><div class="sk"></div><div class="sk"></div>'; return; }
+  // вместо надписи — живые часы учёта: минуты перекатываются, секунды тикают, двоеточие дышит
+  const head='<div class="big"><div><h1 class="nowclock num" data-nowclock><span data-hm></span><span class="ss" data-ss></span></h1><div class="sub" data-day>'+esc(longDate())+'</div></div></div>';
+  if(booting && !S.shifts.length && !S.live.length){ sc.innerHTML=head+'<div class="sk"></div><div class="sk"></div><div class="sk"></div>'; tickHead(); return; }
   const lives=liveRows();
   if(lives.length){
     if(liveIdx>=lives.length) liveIdx=0;
@@ -531,11 +532,19 @@ function renderNow(){
     car.addEventListener('scroll',()=>{ const i=Math.round(car.scrollLeft/Math.max(1,car.clientWidth)); if(i!==liveIdx){ liveIdx=i; haptic('pick');
       document.querySelectorAll('.dots i').forEach((d,k)=>d.classList.toggle('on',k===i)); } },{passive:true});
     car.querySelectorAll('.lcard').forEach(bindLiveCard);
-    tickLive(); renderDrawer(); syncDock();
+    tickLive(); tickHead(); renderDrawer(); syncDock();
     return;
   }
   sc.innerHTML=head+dashboardHTML();
-  bindDashboard(sc); renderDrawer(); syncDock();
+  bindDashboard(sc); tickHead(); renderDrawer(); syncDock();
+}
+// часы в шапке «Сейчас» — время учёта (Камбоджа), где бы ни был телефон
+function tickHead(){
+  const h=document.querySelector('#scrNow [data-nowclock]'); if(!h) return;
+  const d=new Date(nowMs()+KH_OFF), hm=z2(d.getUTCHours())+':'+z2(d.getUTCMinutes());
+  odo(h.querySelector('[data-hm]'),hm); odo(h.querySelector('[data-ss]'),z2(d.getUTCSeconds()));
+  h.setAttribute('aria-label','Сейчас '+hm);
+  const day=document.querySelector('#scrNow [data-day]'), ld=longDate(); if(day && day.textContent!==ld) day.textContent=ld;   // полночь — дата сменится сама
 }
 function longDate(){ const t=today(), d=new Date(t+'T00:00Z');
   return ['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'][d.getUTCDay()]+', '+d.getUTCDate()+' '+MONGEN[d.getUTCMonth()]; }
@@ -556,6 +565,18 @@ function pTime(l,id,kind){
   const x=liveSummary(l,now), r=(kind==='c'?liveSplit(l,x.c.total,now):liveWorkerSplit(l,x.c.total/2,now)).res.find(z=>z.id===id);
   return dur(ms)+(r&&r.amount>0.004?'<em>'+m$(r.amount)+'</em>':'');
 }
+const lstatHTML=(l,paused)=>(paused?'<span class="dot debt"></span>Пауза':'<span class="dot live"></span>Идёт смена')+' · с '+tHM(Date.parse(l.started_at));
+const pauseBtnHTML=paused=>paused?'<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>Продолжить':
+  '<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+// пауза меняет карточку на месте, без перерисовки: кнопка плавно вытягивается в «Продолжить», часы не моргают
+function paintPause(card,l){
+  const p=!!l.paused_at;
+  card.classList.toggle('paused',p); card.classList.toggle('tone-debt',p); card.classList.toggle('tone-live',!p);
+  const st=card.querySelector('.lstat'); if(st) st.innerHTML=lstatHTML(l,p);
+  const pb=card.querySelector('[data-pause]'); if(pb){ pb.innerHTML=pauseBtnHTML(p); pb.setAttribute('aria-label',p?'Продолжить':'Пауза'); }
+  tickLive(); syncDock(); tellNative(true);
+}
+const pauseQ={};   // ответы сервера по паузе: по одной очереди на смену
 function liveCardHTML(l){
   const fin=!!l.finished_at, paused=!!l.paused_at&&!fin, x=liveSummary(l,nowMs());
   if(fin){
@@ -570,11 +591,10 @@ function liveCardHTML(l){
     '<line class="notch" x1="250" y1="130" x2="258" y2="130" stroke-width="2" transform="rotate(180 130 130)"/></svg>';
   const ws=l.worker_ids||[], cs=l.customer_ids||[];
   return '<div class="card lcard sheen '+(paused?'paused tone-debt':'tone-live')+'" data-live="'+l.id+'" style="'+sheenDelay()+'">'+
-    '<div class="lstat">'+(paused?'<span class="dot debt"></span>Пауза':'<span class="dot live"></span>Идёт смена')+' · с '+tHM(Date.parse(l.started_at))+'</div>'+
+    '<div class="lstat">'+lstatHTML(l,paused)+'</div>'+
     '<div class="ringbox">'+ring+'<div class="ringin"><div class="clock num" data-clock>0:00:00</div>'+
       '<div class="k">к оплате <b data-due></b></div><div class="pz num" data-pz></div></div></div>'+
-    (locked?'':'<button class="pausebtn" data-pause>'+(paused?'<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>Продолжить':
-      '<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>')+'</button>')+
+    (locked?'':'<button class="pausebtn" data-pause aria-label="'+(paused?'Продолжить':'Пауза')+'">'+pauseBtnHTML(paused)+'</button>')+
     '<span class="cap">Кастомеры</span><div class="people">'+cs.map(id=>personHTML(l,id,'c')).join('')+
       (locked?'':'<button class="pp add" data-add="c"><div class="av">+</div><div class="tm"></div></button>')+'</div>'+
     '<span class="cap">Операторы</span><div class="people">'+ws.map(id=>{ const lg=wLogOf(l), me=lg.filter(x=>x.id===id&&x.e).pop();
@@ -616,7 +636,7 @@ function tickLive(){
     });
   });
 }
-setInterval(()=>{ if(!document.hidden) tickLive(); },1000);
+setInterval(()=>{ if(!document.hidden){ tickLive(); tickHead(); } },1000);
 function putLive(row){
   if(!row||!row.id) return;
   const i=(S.live||[]).findIndex(x=>x.id===row.id);
@@ -627,14 +647,22 @@ function bindLiveCard(card){
   const id=card.dataset.live, L=()=>(S.live||[]).find(x=>x.id===id);
   const of=card.querySelector('[data-open-fin]'); if(of) of.onclick=()=>{ const l=L(); if(l) finishSheet(draftFromLive(l)); };
   const pb=card.querySelector('[data-pause]');
-  if(pb) pb.onclick=async()=>{
-    const l=L(); if(!l||!liveReady()) return; haptic('hard');
-    pb.disabled=true;
-    const {data,error}=await sb.rpc('live_action',{p_id:id,p_action:l.paused_at?'resume':'pause'});
-    pb.disabled=false;
-    if(error) return fail(error);
-    if(data&&data.id) putLive(data); else await loadAll();
-    renderNow();
+  // пауза ставится на экране сразу, сервер догоняет в фоне; не получилось — возвращаем как в базе и говорим об этом
+  if(pb) pb.onclick=()=>{
+    const l=L(); if(!l||l.finished_at||!liveReady()) return; haptic('hard');
+    const act=l.paused_at?'resume':'pause', t=nowMs(), at=new Date(t).toISOString(), log=(l.pause_log||[]).slice(), o=Object.assign({},l);
+    if(act==='pause'){ o.paused_at=at; o.pause_log=log.concat([{s:at}]); }
+    else { o.pause_sec=(Number(l.pause_sec)||0)+Math.max(0,(t-Date.parse(l.paused_at))/1000); o.paused_at=null;
+      o.pause_log=log.map((p,i)=>i===log.length-1&&!p.e?Object.assign({},p,{e:at}):p); }
+    putLive(o); paintPause(card,o);
+    const q=pauseQ[id]=(pauseQ[id]||Promise.resolve()).then(()=>sb.rpc('live_action',{p_id:id,p_action:act})).catch(e=>({error:e})).then(async r=>{
+      if(pauseQ[id]!==q) return;          // нажали ещё раз — решает последний ответ
+      delete pauseQ[id];
+      if(r.error||!(r.data&&r.data.id)){ try{ await loadAll(); }catch(_){ putLive(l); } renderNow(); if(r.error) fail(r.error); return; }
+      const cur=L(), same=cur&&!cur.finished_at&&!r.data.finished_at&&!!cur.paused_at===!!r.data.paused_at;
+      putLive(r.data);
+      if(same&&card.isConnected){ tickLive(); tellNative(); } else renderNow();
+    });
   };
   const ml=card.querySelector('[data-money]');
   if(ml) ml.onclick=()=>{ haptic('tap'); const det=ml.nextElementSibling, open=!det.classList.contains('open');
@@ -2201,8 +2229,10 @@ function renderAll(){
 }
 // внутри iPhone-приложения: сообщаем, что данные поменялись — оно обновит экран блокировки и виджеты
 let nativeT=null;
-function tellNative(){ const h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.uchet; if(!h) return;
-  clearTimeout(nativeT); nativeT=setTimeout(()=>{ try{ h.postMessage('changed'); }catch(_){} },400); }
+// вместе с сигналом отдаём идущие смены — экран блокировки и Dynamic Island меняются сразу, не дожидаясь сети
+function tellNative(now){ const h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.uchet; if(!h) return;
+  const send=()=>{ try{ h.postMessage(JSON.stringify({live:S.live||[]})); }catch(_){} };
+  clearTimeout(nativeT); if(now) send(); else nativeT=setTimeout(send,400); }
 // iPhone-приложение открыло учёт по ссылке: #fin=ID — итог закончившейся смены, #past — записать прошедшую
 function openFromHash(){
   const h=location.hash.slice(1); if(!h) return;

@@ -57,6 +57,14 @@ body.sheeted #app{transform:scale(.94) translateY(calc(var(--st) + 8px));border-
 .big{display:flex;align-items:flex-end;justify-content:space-between;min-height:52px;margin:6px 4px 8px;padding-right:46px}
 .big h1{font-size:34px;font-weight:700;letter-spacing:.005em}
 .big .sub{font-size:13px;color:var(--t2);margin-top:2px}
+/* живые часы вместо заголовка: цифры одной ширины и перекатываются, секунды мелко сверху — как копейки у сумм */
+.nowclock{display:flex;align-items:flex-start;font-variant-numeric:tabular-nums;letter-spacing:0;line-height:1.12}
+.nowclock .dg{display:inline-block;min-width:.6em;text-align:center}
+.nowclock .dg.sep{min-width:0;padding:0 .03em;position:relative;top:-.05em;animation:colon 2s ease-in-out infinite}
+.nowclock .dg.roll{animation:roll .42s var(--spring)}
+.nowclock .ss{font-size:.44em;font-weight:600;color:var(--t2);margin:.42em 0 0 .3em}
+.nowclock .ss .dg{min-width:.62em}
+@keyframes colon{0%,100%{opacity:1}50%{opacity:.3}}
 #gear{position:fixed;z-index:20;top:calc(var(--st) + 14px);right:16px;width:38px;height:38px;border-radius:50%;
   display:grid;place-items:center;transition:transform .2s var(--spring),opacity .2s}
 #gear:active{transform:scale(.88)}
@@ -141,7 +149,8 @@ body.ro #plus{opacity:.25;pointer-events:none}
   transition:transform .25s var(--spring),background .3s,width .35s var(--spring)}
 .pausebtn:active{transform:scale(.9)}
 .lcard.paused .pausebtn{width:200px;border-radius:36px;background:#fff;color:#000;font-weight:600;gap:8px;display:flex;align-items:center;justify-content:center}
-.people{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 2px}
+/* строка людей прокручивается вбок, а значит обрезает всё, что выходит за её края; запас по краям — чтобы свечение выбранного кружка не резалось рамкой */
+.people{display:flex;gap:14px;overflow-x:auto;padding:26px 20px 6px;margin:-22px -18px -4px;scroll-padding:0 20px}
 .people::-webkit-scrollbar{display:none}
 .pp{display:flex;flex-direction:column;align-items:center;gap:6px;flex:0 0 auto;width:52px;transition:opacity .3s}
 .pp .av{width:52px;height:52px;flex-basis:52px;font-size:16px;transition:transform .35s var(--spring),box-shadow .3s,background .3s}
@@ -612,7 +621,7 @@ html,body{background:#000}
 
 /* цвет человека */
 .av{background:color-mix(in srgb,var(--pc,#888) 26%,#141416);color:color-mix(in srgb,var(--pc,#fff) 80%,#fff);box-shadow:inset 0 0 0 .6px color-mix(in srgb,var(--pc,#fff) 35%,transparent)}
-.pp.on .av{background:var(--pc,#fff);color:#0a0a0a;box-shadow:0 0 0 2px #000,0 0 0 3.5px var(--pc,#fff),0 0 18px -2px var(--pc,#fff)}
+.pp.on .av{background:var(--pc,#fff);color:#0a0a0a;box-shadow:0 0 0 2px #000,0 0 0 3.5px var(--pc,#fff),0 0 20px -3px color-mix(in srgb,var(--pc,#fff) 75%,transparent)}
 .pp.add .av{background:none;color:var(--t2);box-shadow:inset 0 0 0 1.5px var(--line2)}
 .pp .tm{line-height:1.25;height:auto;text-align:center}.pp .tm em{display:block;font-style:normal;color:var(--t1);font-size:11px}
 
@@ -768,9 +777,9 @@ html,body{background:#000}
 <div id="done"><div class="glass"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>
 <div id="gate"></div>
 
-<script>const APP_VERSION='2026-11-15.1';</script>
+<script>const APP_VERSION='2026-11-15.2';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-<script src="core.js?v=2026-11-15.1"></script>
-<script src="app.js?v=2026-11-15.1"></script>
+<script src="core.js?v=2026-11-15.2"></script>
+<script src="app.js?v=2026-11-15.2"></script>
 </body>
 </html>
