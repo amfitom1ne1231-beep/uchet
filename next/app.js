@@ -1107,7 +1107,7 @@ function peopleLevel(sh,k){
     b.innerHTML=(locked?'':'<div style="display:flex;gap:8px;margin-bottom:12px"><input data-new placeholder="'+(k==='w'?'Новый оператор':'Новый кастомер')+'"><button class="pill" data-add style="height:48px">Добавить</button></div>')+
       '<div class="list">'+list.map(p=>'<div class="row" data-id="'+p.id+'" style="opacity:'+(p.active===false?.45:1)+'">'+avHTML(p.name,'s')+'<div class="mid"><div class="nm">'+esc(p.name)+(p.is_me?' · это я':'')+'</div>'+
         (p.active===false?'<div class="sm">в архиве</div>':'')+'</div>'+
-        (locked?'':'<button class="pill" data-ren>✎</button><button class="pill" data-arc>'+(p.active===false?'вернуть':'в архив')+'</button>')+'</div>').join('')+'</div>'+
+        (locked?'':(k==='w'&&isOwner?'<button class="pill" data-tg aria-pressed="'+!!p.tg_id+'">TG</button>':'')+'<button class="pill" data-ren>✎</button><button class="pill" data-arc>'+(p.active===false?'вернуть':'в архив')+'</button>')+'</div>').join('')+'</div>'+
       '<div class="note">Архив прячет человека из выбора, старые смены остаются как были.</div>';
     const T=k==='w'?'workers':'customers';
     const add=b.querySelector('[data-add]'); if(add) add.onclick=async()=>{ const n=b.querySelector('[data-new]').value.trim(); if(!n) return;
@@ -1116,8 +1116,22 @@ function peopleLevel(sh,k){
       const rn=r.querySelector('[data-ren]'); if(rn) rn.onclick=async()=>{ const n=prompt('Новое имя',p.name); if(!n||!n.trim()) return;
         const {error}=await sb.from(T).update({name:n.trim()}).eq('id',id); if(error) return fail(error); haptic('ok'); await reload(); sh.top().render(); };
       const ar=r.querySelector('[data-arc]'); if(ar) ar.onclick=async()=>{ const {error}=await sb.from(T).update({active:p.active===false}).eq('id',id); if(error) return fail(error); haptic('tap'); await reload(); sh.top().render(); };
+      const tg=r.querySelector('[data-tg]'); if(tg) tg.onclick=()=>tgLinkLevel(sh,p);
       r.onclick=e=>{ if(e.target.closest('button')) return; sh.close(); setTimeout(()=>profileSheet(k,id),220); };
     });
+  }});
+}
+// оператор ↔ его Telegram: сторож смены пишет ему (пауза больше часа, смена не сохранена)
+function tgLinkLevel(sh,w){
+  sh.push({title:'Telegram · '+w.name, render(b){
+    const act=M.filter(m=>m.status==='active');
+    b.innerHTML='<div class="lead">Кому из пущенных в учёт писать, когда '+esc(w.name)+' на смене: забытая пауза, несохранённая смена.</div>'+
+      '<div class="list">'+act.map(m=>'<button class="row" data-m="'+m.tg_id+'" style="width:100%;text-align:left">'+avHTML(m.name||'?','s')+'<div class="mid"><div class="nm">'+esc(m.name||('id '+m.tg_id))+'</div>'+
+        (m.username?'<div class="sm">@'+esc(m.username)+'</div>':'')+'</div>'+(String(w.tg_id)===String(m.tg_id)?'<span>✓</span>':'')+'</button>').join('')+'</div>'+
+      (w.tg_id?'<button class="btn red" data-off style="margin-top:12px">Отвязать</button>':'');
+    const set=async v=>{ const {error}=await sb.from('workers').update({tg_id:v}).eq('id',w.id); if(error) return fail(error); haptic('ok'); await reload(); sh.pop(); };
+    b.querySelectorAll('[data-m]').forEach(x=>x.onclick=()=>set(Number(x.dataset.m)));
+    const off=b.querySelector('[data-off]'); if(off) off.onclick=()=>set(null);
   }});
 }
 async function loadMembers(){
