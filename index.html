@@ -628,6 +628,63 @@ html,body{background:#000}
 .qpills{display:flex;gap:8px;margin-top:10px}
 .qpills .pill{flex:1;height:38px;background:rgba(255,255,255,.07)}
 .mymoney{display:flex;align-items:center;gap:14px}.mymoney .mid{flex:1}.mymoney .v{font-size:30px;font-weight:300;margin:2px 0}
+
+/* ======================= ИСТОРИЯ 2: период, сводка, лента дней, недели ======================= */
+.hsticky{position:sticky;top:42px;z-index:8;margin:0 -16px;padding:6px 16px 8px;background:rgba(0,0,0,.55);-webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);box-shadow:inset 0 -.5px 0 var(--line)}
+.hsticky .segbig{margin:0 0 8px}
+.hfil .segmini{margin-bottom:8px}
+.hfil .segmini button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
+.fchips{display:flex;align-items:center;gap:7px;overflow-x:auto;margin:0 -16px;padding:1px 16px}.fchips::-webkit-scrollbar{display:none}
+.fchips .pill{height:32px;flex:0 0 auto;background:rgba(255,255,255,.08)}
+.fchips .pill[aria-pressed="true"]{background:#fff;color:#000}
+.fchips .srch{flex:0 0 32px;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.08);color:var(--t2)}
+.fav{flex:0 0 32px;width:32px;height:32px;border-radius:50%;font-size:11.5px;font-weight:600;display:grid;place-items:center;
+  background:color-mix(in srgb,var(--pc) 24%,#141416);color:color-mix(in srgb,var(--pc) 80%,#fff);box-shadow:inset 0 0 0 .6px color-mix(in srgb,var(--pc) 35%,transparent);
+  transition:transform .3s var(--spring),box-shadow .3s,background .3s}
+.fav:active{transform:scale(.88)}
+.fav.on{background:var(--pc);color:#0a0a0a;box-shadow:0 0 0 2px #000,0 0 0 3.5px var(--pc),0 0 14px -2px var(--pc)}
+.hsum{margin-top:14px;padding:16px 18px;border-radius:22px}
+.hst{display:flex;align-items:center;justify-content:space-between;font-size:14px;color:var(--t2);font-weight:500}
+.hst .pill{height:30px;font-size:13px;background:rgba(255,255,255,.1);position:relative;z-index:1}
+.hsv{font-size:38px;font-weight:200;letter-spacing:-.01em;margin:4px 0 2px}
+.hsr{display:flex;gap:22px;margin-top:12px;padding-top:11px;border-top:.5px solid var(--line)}
+.hsr div{display:flex;flex-direction:column;gap:1px}.hsr span{font-size:12px;color:var(--t2)}.hsr b{font-size:17px;font-weight:500;font-variant-numeric:tabular-nums}
+.dstrip{display:flex;align-items:flex-end;gap:3px;overflow-x:auto;margin:12px -16px 0;padding:0 16px 2px;scroll-snap-type:x proximity}.dstrip::-webkit-scrollbar{display:none}
+.dd{flex:0 0 18px;display:flex;flex-direction:column;align-items:center;gap:4px}
+.dd i{display:block;width:8px;height:46px;border-radius:4px;background:rgba(255,255,255,.06);position:relative;overflow:hidden}
+.dd i:after{content:'';position:absolute;left:0;right:0;bottom:0;height:var(--h);border-radius:4px;background:linear-gradient(rgba(255,255,255,.9),rgba(255,255,255,.45));transition:height .6s var(--spring)}
+.dd span{font-size:9.5px;color:var(--t3);font-variant-numeric:tabular-nums}
+.dd.mon{margin-left:6px}
+.dd.z i:after{display:none}
+.dd.td span{color:#fff;font-weight:600}.dd.td i{box-shadow:0 0 0 1px rgba(255,255,255,.5)}
+.dd:active i{transform:scale(1.15)}
+#scrHist .tone-debt~.dstrip .dd:not(.z) i:after{background:linear-gradient(#f0c46a,rgba(217,164,65,.5))}
+.wkh{position:sticky;top:calc(42px + var(--hst,120px));z-index:6;display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  margin:18px -16px 6px;padding:9px 20px 7px;background:rgba(0,0,0,.5);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+.wkh b{font-size:17px;font-weight:700;white-space:nowrap}.wkh span{font-size:12.5px;color:var(--t2);text-align:right}
+.wkh em{font-style:normal;color:var(--debt)}
+.anch{display:block;height:0}
+.swipe+.anch+.swipe{margin-top:8px}
+.crew{display:flex;align-items:center;min-height:22px}
+.crew .av+.av{margin-left:-5px}
+.crew .bar{width:1px;height:14px;background:rgba(255,255,255,.22);margin:0 7px}
+.crew .more{font-size:11px;color:var(--t2);margin-left:4px}
+.tagp{display:inline-block;font-size:10.5px;font-weight:600;color:var(--t2);background:rgba(255,255,255,.08);border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:2px}
+#scrHist .day{display:flex;justify-content:space-between;align-items:baseline;margin:20px 4px 6px}
+#scrHist .day b{font-size:12.5px;font-weight:600;color:var(--ok)}
+.cal .cd.rng{background:rgba(255,255,255,.14);color:#fff}
+.cal .cd.edge{background:#fff;color:#000;font-weight:700}
+.cal .cd:disabled{opacity:.25}
+.acts{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:8px;margin-top:16px}
+.acts button{display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px 9px;border-radius:16px;background:rgba(255,255,255,.07);font-size:12px;font-weight:500;color:var(--t1);transition:transform .3s var(--spring)}
+.acts button:active{transform:scale(.94)}
+.acts i{font-style:normal;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.1);font-size:15px}
+.acts .pri i{background:#fff;color:#000;font-weight:700}
+.acts .dang{color:#ff6b61}.acts .dang i{background:rgba(255,69,58,.16)}
+.kv.pay{width:100%;align-items:center;gap:10px;justify-content:flex-start;text-align:left}
+.kv.pay+.kv.pay{border-top:.5px solid var(--line)}
+.kv.pay span{flex:1;display:flex;flex-direction:column}.kv.pay em{font-style:normal;font-size:12px;color:var(--t2)}
+.sheet.morph{transition:none}
 @media (prefers-reduced-motion:reduce){
   #bg .l,.sheen:after,.tone-live{animation:none!important}
   *,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important}
@@ -667,9 +724,9 @@ html,body{background:#000}
 <div id="done"><div class="glass"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>
 <div id="gate"></div>
 
-<script>const APP_VERSION='2026-11-13.1';</script>
+<script>const APP_VERSION='2026-11-13.2';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-<script src="core.js?v=2026-11-13.1"></script>
-<script src="app.js?v=2026-11-13.1"></script>
+<script src="core.js?v=2026-11-13.2"></script>
+<script src="app.js?v=2026-11-13.2"></script>
 </body>
 </html>
