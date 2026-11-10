@@ -1879,9 +1879,10 @@ function settingsSheet(){
       '<div class="list plain">'+row('w','Операторы',S.workers.filter(w=>w.active!==false).length)+row('c','Кастомеры',S.customers.filter(c=>c.active!==false).length)+'</div>'+
       (isOwner?'<div class="list plain" style="margin-top:14px">'+row('acc','Доступ',pend?'<span class="dot live"></span> '+pend+' '+plural(pend,'запрос','запроса','запросов'):'')+row('chats','Чаты бота','')+'</div>':'')+
       '<div class="list plain" style="margin-top:14px">'+row('tariff','Тариф','100 × 3, дальше 50')+(locked?'':row('hand','Не роздано и ручная выдача',(()=>{ const hd=handDue(), t=hd.kassa+Object.values(hd.w).reduce((q,v)=>q+v,0); return hd.any?m$(t):'0 $'; })()))+row('exp','Выгрузка','')+'</div>'+
+      (TG&&canWrite?'<div class="list plain" style="margin-top:14px">'+row('iph','Подключить iPhone','')+'</div>':'')+
       '<div class="list plain" style="margin-top:14px">'+row('me',user?(isOwner?'Владелец':'Можно править'):'Вход владельца',user&&!tgAccount(user)?esc(user.email||''):'')+row('about','О версии',APP_VERSION)+'</div>';
     b.querySelectorAll('[data-lv]').forEach(r=>r.onclick=()=>{ haptic('tap'); ({w:()=>peopleLevel(sh,'w'),c:()=>peopleLevel(sh,'c'),acc:()=>accessLevel(sh),chats:()=>chatsLevel(sh),
-      tariff:()=>tariffLevel(sh),hand:()=>manualIssueLevel(sh),exp:()=>exportLevel(sh),me:()=>meLevel(sh),about:()=>aboutLevel(sh)})[r.dataset.lv](); });
+      tariff:()=>tariffLevel(sh),hand:()=>manualIssueLevel(sh),iph:()=>iphoneLevel(sh),exp:()=>exportLevel(sh),me:()=>meLevel(sh),about:()=>aboutLevel(sh)})[r.dataset.lv](); });
   }});
   return sh;
 }
@@ -1970,6 +1971,32 @@ function chatsLevel(sh){
     b.querySelectorAll('[data-un]').forEach(x=>x.onclick=async()=>{ if(!await ask('Отвязать этот чат? Смены туда больше не придут.')) return;
       const {error}=await sb.from('tg_chats').delete().eq('chat_id',x.dataset.un); if(error) return fail(error,'Не отвязался'); haptic('ok'); toast('Чат отвязан'); sh.top().render(); });
   }});
+}
+// iPhone-приложение «Учёт»: одноразовый код на 5 минут и ссылка, которая открывает приложение на этом же телефоне
+function iphoneLevel(sh){
+  let code=null, link=null, exp=0, devs=null, err=null;
+  const call=body=>sb.functions.invoke('pair',{body:Object.assign({initData:TG.initData},body)}).then(r=>r.data||{ok:false,error:'нет связи'});
+  const load=async()=>{ const r=await call({action:'list'}); devs=r.ok?r.devices:[]; if(sh.top()===lv) lv.render(); };
+  const lv=sh.push({title:'iPhone', render(b){
+    const left=Math.max(0,Math.round((exp-Date.now())/1000));
+    b.innerHTML='<div class="lead">Приложение «Учёт» на iPhone: смена на экране блокировки и в Dynamic Island, начать и закончить — не открывая Telegram. Права — те же, что у тебя здесь.</div>'+
+      (code&&left>0?'<div class="card" style="text-align:center;padding:20px 16px"><div class="t2" style="font-size:13px">код на '+Math.floor(left/60)+':'+z2(left%60)+'</div>'+
+          '<div class="num" style="font-size:44px;font-weight:200;letter-spacing:.12em;margin:6px 0 14px">'+code.slice(0,3)+' '+code.slice(3)+'</div>'+
+          '<button class="btn" data-open>Открыть в приложении</button><div class="note" style="margin-top:8px">Не открылось — впиши код в приложении вручную</div></div>'
+        :'<button class="btn" data-new>'+(code?'Новый код':'Подключить этот или другой iPhone')+'</button>')+
+      (err?'<div class="note" style="color:var(--live)">'+esc(err)+'</div>':'')+
+      '<span class="cap">Подключённые телефоны</span>'+(devs==null?'<div class="sk"></div>':devs.length?'<div class="list">'+devs.map(d=>'<div class="row"><div class="mid"><div class="nm">'+esc(d.device||'iPhone')+'</div><div class="sm">с '+dayText(khParts(Date.parse(d.claimed_at)).d)+'</div></div><button class="pill" data-off="'+d.id+'">Отключить</button></div>').join('')+'</div>'
+        :'<div class="empty">Пока ни одного</div>')+
+      '<div class="note">Отключить телефон — он сразу выйдет из учёта.</div>';
+    const nb=b.querySelector('[data-new]'); if(nb) nb.onclick=async()=>{ nb.disabled=true; err=null; const r=await call({action:'start'});
+      if(!r.ok){ err=r.error||'не получилось'; nb.disabled=false; return lv.render(); } code=r.code; link=r.link; exp=Date.parse(r.expires); haptic('ok'); lv.render();
+      const iv=setInterval(()=>{ if(!b.isConnected||sh.top()!==lv) return clearInterval(iv); lv.render(); if(Date.now()>exp) clearInterval(iv); },1000); };
+    // Telegram открывает только обычные ссылки — страница на сайте перекидывает в приложение
+    const ob=b.querySelector('[data-open]'); if(ob) ob.onclick=()=>{ const u=location.origin+location.pathname.replace(/[^/]*$/,'')+'pair/?c='+code; tgTry(()=>TG.openLink(u)); };
+    b.querySelectorAll('[data-off]').forEach(x=>x.onclick=async()=>{ if(!await ask('Отключить этот телефон? Приложение на нём выйдет из учёта.')) return;
+      const r=await call({action:'revoke',id:x.dataset.off}); if(!r.ok) return toast(r.error||'Не отключился',true); haptic('ok'); toast('Телефон отключён'); load(); });
+  }});
+  load();
 }
 function tariffLevel(sh){
   sh.push({title:'Тариф', render(b){
@@ -2170,7 +2197,18 @@ function renderAll(){
   if(tab==='now'){ renderNow(); dirtyScr.hist=true; }
   else { const q=$('#hq'); if(q && document.activeElement===q) dirtyScr.hist=true; else renderHist(); dirtyScr.now=true; }
   renderOffbar(); updateBg();
-  syncDock();
+  syncDock(); tellNative();
+}
+// внутри iPhone-приложения: сообщаем, что данные поменялись — оно обновит экран блокировки и виджеты
+let nativeT=null;
+function tellNative(){ const h=window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.uchet; if(!h) return;
+  clearTimeout(nativeT); nativeT=setTimeout(()=>{ try{ h.postMessage('changed'); }catch(_){} },400); }
+// iPhone-приложение открыло учёт по ссылке: #fin=ID — итог закончившейся смены, #past — записать прошедшую
+function openFromHash(){
+  const h=location.hash.slice(1); if(!h) return;
+  history.replaceState(null,'',location.pathname+location.search);
+  if(h.startsWith('fin=')){ const l=(S.live||[]).find(x=>x.id===h.slice(4)); if(l&&l.finished_at&&!locked) setTimeout(()=>finishSheet(draftFromLive(l)),350); }
+  else if(h==='past'&&!locked) setTimeout(()=>plusSheet('past'),350);
 }
 // док: на смене — красная точка у «Сейчас», «+» в дышащем кольце и сажает людей; долг старше недели — янтарная точка у «Истории»
 function syncDock(){
@@ -2209,6 +2247,7 @@ async function boot(){
   }
   $('#gate').classList.remove('on');
   const first=booting; booting=false; renderAll(); moveInd(); if(first) rise(tab==='now'?$('#scrNow'):$('#scrHist'));
+  openFromHash();
   if(await flushQueue()) await reload();
   if(!started){
     started=true;

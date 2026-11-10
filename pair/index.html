@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex"><title>Учёт · iPhone</title>
+<style>
+:root{color-scheme:dark}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#000;color:#fff;font:16px -apple-system,system-ui,sans-serif;text-align:center;padding:24px;box-sizing:border-box}
+.c{max-width:340px}
+h1{font-size:22px;margin:0 0 6px}
+p{color:rgba(255,255,255,.6);line-height:1.45;margin:0 0 18px}
+.code{font-size:44px;font-weight:200;letter-spacing:.12em;margin:4px 0 22px;font-variant-numeric:tabular-nums}
+a{display:block;background:#fff;color:#000;text-decoration:none;font-weight:600;border-radius:16px;padding:16px}
+</style></head><body><div class="c">
+<h1>Подключить iPhone</h1>
+<p>Сейчас откроется приложение «Учёт». Если не открылось — нажми кнопку или впиши код в приложении.</p>
+<div class="code" id="code">—</div>
+<a id="go" href="#">Открыть «Учёт»</a>
+</div>
+<script>
+// Telegram открывает только обычные ссылки — отсюда перекидываем в приложение по его схеме uchet://
+var c=(new URLSearchParams(location.search).get('c')||'').replace(/\D/g,'').slice(0,6);
+document.getElementById('code').textContent=c?c.slice(0,3)+' '+c.slice(3):'—';
+var u='uchet://pair?c='+c; document.getElementById('go').href=u;
+if(c) setTimeout(function(){ location.href=u; },300);
+</script></body></html>
