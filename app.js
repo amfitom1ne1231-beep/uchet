@@ -423,7 +423,7 @@ function personHTML(l,id,kind){
   const on=kind==='c'?seated(l,id):working(l,id), nm=kind==='c'?cName(id):wName(id);
   const spans=(kind==='c'?livePlayerSpans(l,nowMs()):liveWorkerSpans(l,nowMs())).find(x=>x.id===id);
   const ms=spans?spanLen(spanMinus(spans.spans,livePauseSpans(l,nowMs()))):0;
-  return '<button class="pp '+(on?'on':'off')+'" data-p="'+kind+'|'+id+'"><div class="av">'+esc(initials(nm))+
+  return '<button class="pp '+(on?'on':'off')+'" data-p="'+kind+'|'+id+'" aria-label="'+esc(nm)+(kind==='c'?(on?', за столом':', встал'):(on?', на смене':', сменился'))+'"><div class="av">'+esc(initials(nm))+
     (kind==='c'&&l.payer_id===id?'<i class="coin">$</i>':'')+'</div><div class="tm num" data-ptm="'+kind+'|'+id+'">'+(on||ms>60e3?dur(ms):'—')+'</div></button>';
 }
 function liveCardHTML(l){
@@ -472,6 +472,7 @@ function tickLive(){
     const dueT=x.h+' ч · '+m$(x.c.total);
     const d1=card.querySelector('[data-due]'); if(d1 && d1.textContent!==dueT) d1.textContent=dueT;
     const d2=card.querySelector('[data-due2]'); if(d2) d2.textContent=m$(x.c.total);
+    const md=card.querySelector('.mdet.open [data-mdet]'); if(md && now%5000<1000) md.innerHTML=liveMoneyHTML(l);
     const pz=card.querySelector('[data-pz]');
     if(pz) pz.textContent=l.paused_at?'пауза '+clockHM(Math.max(0,now-Date.parse(l.paused_at))/1000+59)+'':((l.pause_sec||0)>59?'паузы '+clockHM(l.pause_sec):'');
     const half=Math.floor((played+1800)/3600);
@@ -1015,7 +1016,7 @@ function finishLevel(sh,d,title){
       rows:d.customers.map(p=>({name:cName(p.id),spans:p.spans||[{s:d.start,e:d.end}]})).concat(d.workers.map(p=>({name:wName(p.id),spans:p.spans||[{s:d.start,e:d.end}],w:1})))});
     const crow=cr=>{ const src=d.customers.find(p=>p.id===cr.customer_id), paidAll=cr.paid_amount>=cr.amount-0.004&&cr.amount>0.004, part=cr.paid_amount>0.004&&!paidAll;
       const covered=cr.paid_by&&cr.amount<=0.004;
-      return '<div class="crow" data-c="'+cr.customer_id+'">'+avHTML(cName(cr.customer_id),'s')+'<div class="mid"><div class="nm">'+esc(cName(cr.customer_id))+(d.payer===cr.customer_id?' · за всех':'')+'</div>'+
+      return '<div class="crow" data-c="'+cr.customer_id+'">'+avHTML(cName(cr.customer_id),'s')+'<div class="mid" data-time role="button"><div class="nm">'+esc(cName(cr.customer_id))+(d.payer===cr.customer_id?' · за всех':'')+'</div>'+
         '<div class="sm">'+(covered?'платит '+esc(cName(cr.paid_by)):edit?'':part?'заплатил '+m$(cr.paid_amount)+', долг '+m$(cr.amount-cr.paid_amount):(cr.covered>0.004?'свои '+m$(cr.share):''))+'</div></div>'+
         (covered?'':edit?'<b class="num" style="font-weight:500">'+m$(cr.amount)+'</b><span class="st '+(paidAll?'ok':'debt')+'">'+(paidAll?'оплачено':'долг '+m$(cr.amount-cr.paid_amount))+'</span>'
           :'<button class="a num" data-amt>'+m$(cr.amount)+'</button><div class="seg'+(paidAll||part?'':' debt')+'"><button data-paid aria-pressed="'+(paidAll||part)+'">'+(part?'Часть':'Заплатил')+'</button><button data-debt aria-pressed="'+!(paidAll||part)+'">Долг</button></div>')+'</div>'; };
@@ -1035,7 +1036,7 @@ function finishLevel(sh,d,title){
         '<button class="pill" data-payer="" aria-pressed="'+!d.payer+'">Никто</button>'+d.customers.map(p=>'<button class="pill" data-payer="'+p.id+'" aria-pressed="'+(d.payer===p.id)+'">'+esc(cName(p.id))+'</button>').join('')+'</div>':'')+
       '<span class="cap">Операторы</span><div class="card" style="padding:2px 14px">'+
         x.wrows.map(w=>{ const sp=(d.workers.find(p=>p.id===w.worker_id)||{}).spans;
-          return '<div class="crow">'+avHTML(wName(w.worker_id),'s')+'<div class="mid"><div class="nm">'+esc(wName(w.worker_id))+'</div><div class="sm">'+(sp?sp.map(p=>tHM(p.s)+'–'+tHM(p.e)).join(', '):'вся смена')+'</div></div><b class="num" style="font-weight:500">'+m$(w.share)+'</b></div>'; }).join('')+
+          return '<div class="crow" data-w="'+w.worker_id+'">'+avHTML(wName(w.worker_id),'s')+'<div class="mid" data-time role="button"><div class="nm">'+esc(wName(w.worker_id))+'</div><div class="sm">'+(sp?sp.map(p=>tHM(p.s)+'–'+tHM(p.e)).join(', '):'вся смена')+' ›</div></div><b class="num" style="font-weight:500">'+m$(w.share)+'</b></div>'; }).join('')+
         '<div class="prow"><button class="w t2" data-wadd style="text-align:left">+ Оператор</button></div></div>'+
       '<span class="cap">Скидка и заметка</span>'+
       '<div style="display:flex;gap:10px"><input data-disc inputmode="decimal" placeholder="Скидка, $" value="'+(d.discount?String(d.discount).replace('.',','):'')+'" style="flex:0 0 120px"><input data-note placeholder="Заметка" value="'+esc(d.note)+'"></div>'+
@@ -1079,6 +1080,9 @@ function finishLevel(sh,d,title){
       if(who) longPress(who,async()=>{ if(!await ask('Убрать '+cName(id)+' из смены?')) return;
         d.customers=d.customers.filter(p=>p.id!==id); if(d.payer===id) d.payer=null; T(); me.render(); });
     });
+    // нажал на человека — его время в смене (отрезков может быть несколько)
+    b.querySelectorAll('[data-time]').forEach(m=>m.onclick=()=>{ const r=m.closest('[data-c],[data-w]'), isC=!!r.dataset.c, id=r.dataset.c||r.dataset.w;
+      const p=(isC?d.customers:d.workers).find(z=>z.id===id); if(p) spansLevel(sh,d,p,isC?cName(id):wName(id),T); });
     const ap=b.querySelector('[data-allpaid]'); if(ap) ap.onclick=()=>{ haptic('ok'); d.customers.forEach(p=>p.paid='all'); d.dirty=true; me.render(); };
     b.querySelector('[data-cadd]').onclick=()=>pickPeople('c',{customer_ids:d.customers.map(p=>p.id)},id=>{ d.customers.push({id:id,spans:null,paid:0}); T(); },sh);
     b.querySelector('[data-wadd]').onclick=()=>pickPeople('w',{worker_ids:d.workers.map(p=>p.id)},id=>{ d.workers.push({id:id,spans:null}); T(); },sh);
@@ -1101,6 +1105,30 @@ function finishLevel(sh,d,title){
     const ds=b.querySelector('[data-delsh]'); if(ds) ds.onclick=()=>deleteShift(d.shiftId);
   }, onBack(){ lv._lvl&&lv._lvl.render(); }};
   lv._lvl=sh.push(lv);
+}
+// время человека в смене: каждый отрезок «с — до» правится, лишний убирается, можно добавить
+function spansLevel(sh,d,p,name,T){
+  sh.push({title:name, render(b,me){
+    const list=p.spans&&p.spans.length?p.spans:[{s:d.start,e:d.end}];
+    b.innerHTML='<div class="lead">Когда '+esc(name)+' был в смене. Паузы вычитаются сами.</div><div class="card" style="padding:4px 14px">'+
+      list.map((z,i)=>'<div class="prow"><button class="w num" data-i="'+i+'" style="text-align:left">'+tHM(z.s)+' – '+tHM(z.e)+'</button><span class="d">'+dur(z.e-z.s)+'</span>'+
+        (list.length>1?'<button class="del" data-rm="'+i+'" aria-label="Убрать отрезок">✕</button>':'')+'</div>').join('')+
+      '<div class="prow"><button class="w t2" data-add style="text-align:left">+ Ещё отрезок</button></div></div>'+
+      (p.spans?'<button class="btn sec" data-all style="margin-top:14px">Был всю смену</button>':'')+
+      '<button class="btn" data-ok style="margin-top:10px">Готово</button>';
+    const put=v=>{ p.spans=v; T(); me.render(); };
+    b.querySelectorAll('[data-i]').forEach(x=>x.onclick=()=>{ const i=Number(x.dataset.i), z=list[i];
+      pickTime(sh,{title:'С',value:z.s,ref:z.s,onPick:s=>pickTime(sh,{title:'До',value:Math.max(z.e,s+60e3),ref:z.e,onPick:e=>{
+        if(e<=s) return toast('Конец раньше начала',true);
+        const nl=list.slice(); nl[i]={s:Math.max(d.start,s),e:Math.min(d.end,e)}; p.spans=nl.sort((a,c)=>a.s-c.s); T(); }})}); });
+    b.querySelectorAll('[data-rm]').forEach(x=>x.onclick=()=>{ haptic('warn'); put(list.filter((_,i)=>i!==Number(x.dataset.rm))); });
+    b.querySelector('[data-add]').onclick=()=>{ const last=list[list.length-1], s0=Math.min(d.end-60e3,last.e+15*60e3);
+      pickTime(sh,{title:'С',value:s0,ref:s0,onPick:s=>pickTime(sh,{title:'До',value:d.end,ref:d.end,onPick:e=>{
+        if(e<=s) return toast('Конец раньше начала',true);
+        p.spans=list.concat([{s:Math.max(d.start,s),e:Math.min(d.end,e)}]).sort((a,c)=>a.s-c.s); T(); }})}); };
+    const all=b.querySelector('[data-all]'); if(all) all.onclick=()=>{ haptic('tap'); put(null); };
+    b.querySelector('[data-ok]').onclick=()=>sh.pop();
+  }});
 }
 async function saveDraft(sh,d,btn){
   const x=draftCalc(d);
@@ -1155,9 +1183,12 @@ function timelineHTML(o){
 /* ======================= РАСЧЁТ ======================= */
 // Кастомер платит: по умолчанию весь долг; можно вписать свою сумму. Видно, что закроется и кому сколько.
 function settleSheet(cid){
-  const d=debts().find(x=>x.id===cid); if(!d) return toast(cName(cid)+' ничего не должен');
+  let d=debts().find(x=>x.id===cid); if(!d) return toast(cName(cid)+' ничего не должен');
   const sh=openSheet({detent:'full'}); let amt=d.total;
-  sh.push({title:cName(cid)+' платит', render(b){
+  sh.push({title:cName(cid)+' платит', live:true, render(b){
+    d=debts().find(x=>x.id===cid);
+    if(!d){ b.innerHTML='<div class="empty">'+esc(cName(cid))+' уже всё заплатил ✓</div>'; return; }
+    amt=Math.min(amt,d.total);
     const pv=allocPreview(cid,amt);
     b.innerHTML='<button class="amtbig edit" data-amt style="width:100%">'+moneyHTML(amt)+'</button>'+
       '<div class="quick"><button data-q="100">100</button><button data-q="200">200</button><button data-q="'+r2(d.total/2)+'">½</button><button data-q="'+d.total+'">всё</button></div>'+
@@ -1224,9 +1255,11 @@ function debtsSheet(){
   }});
 }
 function paymentSheet(pid){
-  const p=(S.payments||[]).find(x=>x.id===pid); if(!p) return;
+  let p=(S.payments||[]).find(x=>x.id===pid); if(!p) return;
   const sh=openSheet({detent:'half'});
-  sh.push({title:cName(p.customer_id)+' заплатил', render(b){
+  sh.push({title:cName(p.customer_id)+' заплатил', live:true, render(b){
+    p=(S.payments||[]).find(x=>x.id===pid)||p;
+    if(p.undone_at){ b.innerHTML='<div class="empty">Этот расчёт отменён</div>'; return; }
     b.innerHTML='<div class="amtbig">'+moneyHTML(p.amount)+'</div><div class="note" style="text-align:center">'+dayLabel(khParts(Date.parse(p.created_at)).d)+', '+tHM(Date.parse(p.created_at))+'</div>'+
       '<div class="card alloc">'+(p.alloc||[]).map(a=>{ const s=S.shifts.find(x=>x.id===a.shift_id); return '<div class="kv"><span>'+(s?dayText(s.work_date)+' · смена '+m$(s.total):'смена удалена')+'</span><b>'+m$(a.amount)+'</b></div>'; }).join('')+'</div>'+
       (locked?'':'<button class="btn red" data-un style="margin-top:12px">Отменить этот расчёт</button>');
@@ -1284,7 +1317,7 @@ function drawFlow(f){
 /* ======================= ПРОФИЛЬ ЧЕЛОВЕКА ======================= */
 function profileSheet(k,id){
   const sh=openSheet({detent:'full'});
-  sh.push({title:k==='c'?cName(id):wName(id), render(b){
+  sh.push({title:k==='c'?cName(id):wName(id), live:true, render(b){
     const from=today().slice(0,7)+'-01';
     const mine=S.shifts.filter(s=>(k==='c'?s.customerIds:s.workerIds).includes(id));
     const month=mine.filter(s=>s.work_date>=from);
