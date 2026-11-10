@@ -76,11 +76,11 @@ function showDone(){
   setTimeout(()=>d.classList.remove('on'),1200);
 }
 // число докручивается к новому значению
-function rollTo(el,to,fmt){
+function rollTo(el,to,fmt,D0){
   if(!el) return;
   const from=Number(el.dataset.v||to); el.dataset.v=to;
   if(reduce()||Math.abs(from-to)<0.005){ el.innerHTML=fmt(to); return; }
-  const t0=performance.now(), D=450;
+  const t0=performance.now(), D=D0||450;
   (function step(t){ const k=Math.min(1,(t-t0)/D), e=1-Math.pow(1-k,3);
     el.innerHTML=fmt(from+(to-from)*e); if(k<1) requestAnimationFrame(step); })(t0);
 }
@@ -348,6 +348,7 @@ function goTab(name){
   $('#scrHist').classList.toggle('off-r',name!=='hist');
   document.querySelectorAll('#nav .nt').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===name));
   syncMini();
+  rise(name==='now'?$('#scrNow'):$('#scrHist'));
 }
 document.querySelectorAll('#nav .nt').forEach(b=>b.onclick=()=>goTab(b.dataset.tab));
 $('#plus').onclick=()=>{ if(locked) return toast('Записи ведет владелец'); plusSheet(); };
@@ -527,34 +528,66 @@ async function togglePerson(lid,k,pid,b){
 }
 
 /* ======================= СЕЙЧАС: смены нет ======================= */
+// прошлая неделя — для сравнения
+function prevWeekSum(){
+  const from=weekStart(), p=new Date(Date.parse(from+'T00:00Z')-7*864e5).toISOString().slice(0,10);
+  return S.shifts.filter(s=>s.work_date>=p&&s.work_date<from).reduce((a,s)=>a+(Number(s.total)||0),0);
+}
+const agoText=ms=>{ const m=Math.max(0,Math.round((nowMs()-ms)/60000)); if(m<1) return 'только что'; if(m<60) return m+' мин назад'; const h=Math.round(m/60); if(h<24) return h+' '+plural(h,'час','часа','часов')+' назад'; const d=Math.round(h/24); return d+' '+plural(d,'день','дня','дней')+' назад'; };
+const stPill=s=>{ const st=shiftStatus(s), d=(s.custLinks||[]).reduce((a,l)=>a+due(l),0);
+  return '<span class="st '+st+'">'+(st==='ok'?'рассчитано':st==='debt'?'долг '+m$(d):'без кастомеров')+'</span>'; };
 function dashboardHTML(){
-  const dl=debts(), tot=dl.reduce((a,x)=>a+x.total,0), hd=handDue(), wk=weekStats();
+  const dl=debts(), tot=dl.reduce((a,x)=>a+x.total,0), hd=handDue(), wk=weekStats(), prev=prevWeekSum();
   const oldest=dl.length?Math.round((Date.parse(today()+'T00:00Z')-Date.parse(dl.map(x=>x.oldest).sort()[0]+'T00:00Z'))/864e5):0;
-  let h='';
+  const last=S.shifts.find(s=>!s.pending);
+  let h='<div class="aurora '+(tot>0.004?'warm':'calm')+'"><i></i><i></i><i></i></div>';
+  // главное — долги
   if(tot>0.004){
-    h+='<div class="hero"><div class="lbl">Должны</div><div class="v" data-roll="'+tot+'">'+moneyHTML(tot)+'</div>'+
+    h+='<div class="hero"><div class="lbl">Должны</div><div class="v" data-count="'+tot+'">'+moneyHTML(tot)+'</div>'+
       '<div class="s">'+dl.length+' '+plural(dl.length,'человек','человека','человек')+(oldest>0?' · самый старый долг '+oldest+' '+plural(oldest,'день','дня','дней'):'')+'</div></div>';
-    h+='<div style="margin-top:14px">'+dl.map(d=>{
+  } else {
+    h+='<div class="hero calm"><div class="lbl">Должны</div><div class="v ok"><svg class="chk" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg> Все рассчитаны</div></div>';
+  }
+  // начать смену — главное действие, когда смены нет
+  if(!locked){
+    const crew=lastCrew();
+    h+='<button class="startcta" data-start><div class="mid"><div class="t">Начать смену</div><div class="s">'+
+      (crew.length?esc(crew.map(wName).join(', '))+' · как в прошлый раз':'выбрать операторов')+'</div></div>'+
+      '<div class="avs">'+crew.slice(0,3).map(id=>avHTML(wName(id),'s')).join('')+'</div><div class="play"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg></div></button>';
+  }
+  if(tot>0.004){
+    h+='<span class="cap">Кто должен</span>'+dl.map(d=>{
       const old=Math.round((Date.parse(today()+'T00:00Z')-Date.parse(d.oldest+'T00:00Z'))/864e5);
       return '<div class="swipe" data-debtor="'+d.id+'"><div class="under"><span class="r">Заплатил всё</span><span class="l"><button data-prof>Профиль</button></span></div>'+
-        '<div class="face"><div class="debtor">'+avHTML(cName(d.id))+'<div class="mid"><div class="nm">'+esc(cName(d.id))+(old>7?' <span class="dot debt" style="margin-left:4px"></span>':'')+'</div>'+
-        '<div class="sm">'+d.items.length+' '+plural(d.items.length,'смена','смены','смен')+' · с '+dayText(d.oldest)+'</div></div><div class="amt">'+moneyHTML(d.total)+'</div></div></div></div>';
-    }).join('')+'</div>';
-  } else {
-    h+='<div class="hero calm"><div class="lbl">Должны</div><div class="v">Все рассчитаны <span style="color:var(--ok)">✓</span></div></div>';
+        '<div class="face"><div class="debtor">'+avHTML(cName(d.id))+'<div class="mid"><div class="nm">'+esc(cName(d.id))+'</div>'+
+        '<div class="sm">'+d.items.length+' '+plural(d.items.length,'смена','смены','смен')+' · с '+dayText(d.oldest)+(old>7?' · <span style="color:var(--debt)">'+old+' дн.</span>':'')+'</div></div>'+
+        '<div class="amt" data-count="'+d.total+'">'+moneyHTML(d.total)+'</div></div></div></div>';
+    }).join('');
   }
   if(hd.any){
     const parts=['касса '+m$(hd.kassa)].concat(Object.keys(hd.w).filter(k=>Math.abs(hd.w[k])>0.004).map(k=>wName(k)+' '+m$(hd.w[k])));
     h+='<span class="cap">Не роздано</span><div class="list"><button class="row" data-hand style="width:100%;text-align:left"><span class="dot none"></span><div class="mid">'+
       '<div class="nm">'+esc(parts.join(' · '))+'</div><div class="sm">смены без кастомеров и старые записи — выдать вручную</div></div><div class="chev">›</div></button></div>';
   }
+  // неделя: живой график
   const mx=Math.max(1,...wk.days), td=Math.round((Date.parse(today()+'T00:00Z')-Date.parse(wk.from+'T00:00Z'))/864e5);
+  const delta=prev>0?Math.round((wk.sum-prev)/prev*100):null;
+  const wmax=Math.max(1,...Object.values(wk.w));
   h+='<span class="cap">Эта неделя</span><div class="card week">'+
-    '<div style="display:flex;align-items:baseline;justify-content:space-between"><div class="tot">'+moneyHTML(wk.sum)+'</div>'+
-    '<div class="t2" style="font-size:14px">'+wk.n+' '+plural(wk.n,'смена','смены','смен')+' · '+wk.h+' ч</div></div>'+
-    (wk.n?'<div class="ws"><span>касса <b>'+m$(wk.kassa)+'</b></span>'+Object.keys(wk.w).map(k=>'<span>'+esc(wName(k))+' <b>'+m$(wk.w[k])+'</b></span>').join('')+'</div>':'')+
-    '<div class="bars">'+wk.days.map((v,i)=>{ const d=new Date(Date.parse(wk.from+'T00:00Z')+i*864e5).toISOString().slice(0,10);
-      return '<button data-day="'+d+'" class="'+(i===td?'today':'')+'"><i style="height:'+Math.max(4,Math.round(v/mx*48))+'px;opacity:'+(v?1:.5)+'"></i><span>'+['Пн','Вт','Ср','Чт','Пт','Сб','Вс'][i]+'</span></button>'; }).join('')+'</div></div>';
+    '<div class="wh"><div><div class="tot" data-count="'+wk.sum+'">'+moneyHTML(wk.sum)+'</div><div class="t2" style="font-size:13.5px;margin-top:2px">'+wk.n+' '+plural(wk.n,'смена','смены','смен')+' · '+wk.h+' ч</div></div>'+
+      (delta!=null?'<div class="delta '+(delta>=0?'up':'down')+'">'+(delta>=0?'↑':'↓')+' '+Math.abs(delta)+'%<span>к прошлой</span></div>':'')+'</div>'+
+    '<div class="chart" data-chart>'+wk.days.map((v,i)=>{ const d=new Date(Date.parse(wk.from+'T00:00Z')+i*864e5).toISOString().slice(0,10);
+      return '<button class="col'+(i===td?' today':'')+(v?'':' zero')+(i>td?' future':'')+'" data-day="'+d+'" style="--i:'+i+';--h:'+(v?Math.max(8,v/mx*100):0)+'%">'+
+        '<span class="val">'+(v?r2(v).toLocaleString('ru-RU'):'')+'</span><i></i><span class="d">'+['Пн','Вт','Ср','Чт','Пт','Сб','Вс'][i]+'</span></button>'; }).join('')+
+      '<div class="tip" data-tip></div></div>'+
+    (wk.n?'<div class="ops"><div class="op"><span>Касса</span><div class="bar"><i style="--w:100%"></i></div><b>'+m$(wk.kassa)+'</b></div>'+
+      Object.keys(wk.w).sort((a,b)=>wk.w[b]-wk.w[a]).map((k,i)=>'<div class="op"><span>'+esc(wName(k))+'</span><div class="bar"><i style="--w:'+Math.round(wk.w[k]/Math.max(wmax,wk.kassa)*100)+'%;--i:'+(i+1)+'"></i></div><b>'+m$(wk.w[k])+'</b></div>').join('')+'</div>':'')+
+  '</div>';
+  if(last){
+    h+='<span class="cap">Последняя смена</span><button class="lastsh" data-last="'+last.id+'"><div class="mid"><div class="nm">'+dayLabel(last.work_date)+
+      (last.start_time?', '+hhmm(last.start_time)+'–'+tHM(shiftEndMs(last)):'')+'</div><div class="sm" data-ago="'+shiftEndMs(last)+'">закончилась '+agoText(shiftEndMs(last))+'</div>'+miniBar(last)+'</div>'+
+      '<div class="rt"><div class="sum">'+moneyHTML(last.total)+'</div>'+stPill(last)+'</div></button>';
+  }
   return h;
 }
 function bindDashboard(sc){
@@ -564,9 +597,32 @@ function bindDashboard(sc){
     w.querySelector('[data-prof]').onclick=e=>{ e.stopPropagation(); w._close(); profileSheet('c',cid); };
     swipeable(w,{ right:locked?null:()=>settleAll(cid,w), left:true });
   });
+  const st=sc.querySelector('[data-start]'); if(st) st.onclick=()=>plusSheet();
   const hd=sc.querySelector('[data-hand]'); if(hd) hd.onclick=()=>{ const s=settingsSheet(); manualIssueLevel(s); };
-  sc.querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{ goTab('hist'); setTimeout(()=>{ const a=document.getElementById('d-'+b.dataset.day);
-    if(a) $('#scrHist').scrollTo({top:a.offsetTop-70,behavior:reduce()?'auto':'smooth'}); else toast('В этот день смен нет'); },120); });
+  const ls=sc.querySelector('[data-last]'); if(ls) ls.onclick=()=>shiftSheet(ls.dataset.last,ls);
+  // график: нажал на день — всплыла подсказка; второй раз — история этого дня
+  const ch=sc.querySelector('[data-chart]'), tip=ch&&ch.querySelector('[data-tip]'); let cur=null;
+  if(ch) ch.querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{
+    const d=b.dataset.day;
+    if(cur===d){ goTab('hist'); setTimeout(()=>{ const a=document.getElementById('d-'+d); if(a) $('#scrHist').scrollTo({top:a.offsetTop-80,behavior:reduce()?'auto':'smooth'}); },160); return; }
+    cur=d; haptic('pick');
+    const sh=S.shifts.filter(s=>s.work_date===d), sum=sh.reduce((a,s)=>a+(Number(s.total)||0),0);
+    ch.querySelectorAll('.col').forEach(x=>x.classList.toggle('sel',x===b));
+    tip.innerHTML='<b>'+dayLabel(d)+'</b>'+(sh.length?sh.length+' '+plural(sh.length,'смена','смены','смен')+' · '+m$(sum)+'<em>ещё раз — открыть</em>':'смен не было');
+    const r=b.getBoundingClientRect(), R=ch.getBoundingClientRect();
+    tip.style.left=Math.min(R.width-150,Math.max(0,r.left-R.left+r.width/2-75))+'px';
+    const bar=b.querySelector('i').getBoundingClientRect();   // подсказка — прямо над столбиком
+    tip.style.top=Math.max(-30,bar.top-R.top-tip.offsetHeight-10)+'px';
+    tip.classList.remove('on'); void tip.offsetWidth; tip.classList.add('on');
+  });
+}
+// живые «… назад» на главной
+setInterval(()=>{ document.querySelectorAll('[data-ago]').forEach(e=>e.textContent='закончилась '+agoText(Number(e.dataset.ago))); },30000);
+// появление: блоки по очереди всплывают, цифры набегают — при открытии экрана, не при каждом обновлении
+function rise(sc){
+  if(reduce()) return;
+  [...sc.children].forEach((el,i)=>{ if(el.classList.contains('aurora')) return; el.style.setProperty('--i',Math.min(i,10)); el.classList.remove('rise'); void el.offsetWidth; el.classList.add('rise'); });
+  sc.querySelectorAll('[data-count]').forEach(el=>{ const v=Number(el.dataset.count); el.dataset.v=0; rollTo(el,v,x=>moneyHTML(x),900); });
 }
 // смахнул должника — заплатил всё (сразу, с «Отменить»)
 async function settleAll(cid,wrap){
@@ -579,18 +635,10 @@ async function settleAll(cid,wrap){
 }
 
 /* ======================= ИСТОРИЯ ======================= */
-let histQ='', histChip='', searchOpen=false;
-function entries(){
-  const a=S.shifts.map(s=>({kind:'shift',date:s.work_date,at:s.start_time?shiftStart(s):Date.parse(s.created_at||s.work_date),s:s}));
-  S.ops.forEach(o=>a.push({kind:'op',date:o.op_date,at:Date.parse(o.created_at||o.op_date),o:o}));
-  (S.payments||[]).filter(p=>!p.undone_at && p.note!=='при сохранении смены').forEach(p=>a.push({kind:'pay',date:khParts(Date.parse(p.created_at)).d,at:Date.parse(p.created_at),p:p}));
-  return a.sort((x,y)=>(y.date>x.date?1:y.date<x.date?-1:0)||(y.at-x.at));
-}
+let histQ='', histChip='', searchOpen=false, histSeg='shifts';
 function histMatch(e){
   if(histChip==='debt' && !(e.kind==='shift' && shiftStatus(e.s)==='debt')) return false;
   if(histChip==='none' && !(e.kind==='shift' && shiftStatus(e.s)==='none')) return false;
-  if(histChip==='shifts' && e.kind!=='shift') return false;
-  if(histChip==='money' && e.kind==='shift') return false;
   if(histChip.startsWith('p:')){ const id=histChip.slice(2);
     if(e.kind==='shift') { if(!e.s.workerIds.includes(id)&&!e.s.customerIds.includes(id)) return false; }
     else if(e.kind==='op'){ if(e.o.worker_id!==id) return false; } else if(e.p.customer_id!==id) return false; }
@@ -601,45 +649,65 @@ function histMatch(e){
   if(e.kind==='pay') words.push(cName(e.p.customer_id),String(e.p.amount));
   return words.join(' ').toLowerCase().includes(q);
 }
+// «Смены» — только смены; «Расчёты» — кто когда заплатил и ручные выдачи. Не вперемешку.
+function entries(){
+  if(histSeg==='shifts') return S.shifts.map(s=>({kind:'shift',date:s.work_date,at:s.start_time?shiftStart(s):Date.parse(s.created_at||s.work_date),s:s}))
+    .sort((x,y)=>(y.date>x.date?1:y.date<x.date?-1:0)||(y.at-x.at));
+  const a=[];
+  S.ops.forEach(o=>a.push({kind:'op',date:o.op_date,at:Date.parse(o.created_at||o.op_date),o:o}));
+  (S.payments||[]).filter(p=>!p.undone_at).forEach(p=>a.push({kind:'pay',date:khParts(Date.parse(p.created_at)).d,at:Date.parse(p.created_at),p:p}));
+  return a.sort((x,y)=>(y.date>x.date?1:y.date<x.date?-1:0)||(y.at-x.at));
+}
 function miniBar(s){
   const a=shiftStart(s), b=shiftEndMs(s), W=Math.max(1,b-a);
   return '<div class="mini">'+pauseSpans(s.pause_log).filter(p=>p.e).map(p=>'<i style="left:'+((p.s-a)/W*100).toFixed(1)+'%;width:'+Math.max(1,(p.e-p.s)/W*100).toFixed(1)+'%"></i>').join('')+'</div>';
 }
 function shiftCardHTML(s){
-  const st=shiftStatus(s), ppl=s.customerIds.concat(s.workerIds);
+  const d=new Date(s.work_date+'T00:00Z'), lbl=dayLabel(s.work_date);
+  const ppl=(s.custLinks||[]).map(l=>cName(l.id)).join(', ');
   return '<div class="swipe" data-shift="'+s.id+'"><div class="under"><span class="r">Рассчитать</span><span class="l">'+
       (locked?'':'<button data-edit>Изменить</button><button class="del" data-del>Удалить</button>')+'</span></div>'+
-    '<div class="face"><div class="hc"><div class="l1"><span class="tm num">'+(s.start_time?hhmm(s.start_time)+'–'+tHM(shiftEndMs(s)):'без времени')+'</span>'+
-    '<span class="hrs">'+s.hours+' ч</span><span class="sum">'+moneyHTML(s.total)+'</span><span class="dot '+st+'"></span></div>'+
-    '<div class="l2">'+miniBar(s)+'<div class="avs">'+ppl.slice(0,5).map((id,i)=>avHTML(i<s.customerIds.length?cName(id):wName(id),'xs')).join('')+'</div></div>'+
-    (s.pending?'<div class="sm t3" style="margin-top:6px;font-size:12px">ещё не отправлено</div>':'')+'</div></div></div>';
+    '<div class="face"><div class="hc2">'+
+      '<div class="dt'+(lbl==='Сегодня'?' now':'')+'"><b>'+d.getUTCDate()+'</b><span>'+(lbl==='Сегодня'?'сегодня':lbl==='Вчера'?'вчера':WD[d.getUTCDay()].toLowerCase())+'</span></div>'+
+      '<div class="mid"><div class="r1"><span class="tm num">'+(s.start_time?hhmm(s.start_time)+'–'+tHM(shiftEndMs(s)):'без времени')+'</span><span class="hrs">'+s.hours+' ч</span></div>'+
+        miniBar(s)+'<div class="ppl">'+(ppl?esc(ppl):'<span class="t3">кастомеры не вписаны</span>')+' <span class="t3">· '+esc(s.workerIds.map(wName).join(', '))+'</span></div></div>'+
+      '<div class="rt"><div class="sum">'+moneyHTML(s.total)+'</div>'+stPill(s)+'</div>'+
+    (s.pending?'<div class="pend">ещё не отправлено</div>':'')+'</div></div></div>';
 }
 function moneyRowHTML(e){
-  if(e.kind==='pay') return '<div class="hm" data-pay="'+e.p.id+'"><span class="ic">$</span>'+esc(cName(e.p.customer_id))+' заплатил<b>'+m$(e.p.amount)+'</b></div>';
+  if(e.kind==='pay'){ const p=e.p, sh=(p.alloc||[]).map(a=>S.shifts.find(x=>x.id===a.shift_id)).filter(Boolean);
+    return '<button class="mrow" data-pay="'+p.id+'">'+avHTML(cName(p.customer_id),'s')+'<div class="mid"><div class="nm">'+esc(cName(p.customer_id))+' заплатил</div>'+
+      '<div class="sm">'+(sh.length?'за '+sh.map(s=>dayText(s.work_date)).join(', '):'')+' · '+tHM(Date.parse(p.created_at))+'</div></div><b class="plus">+'+m$(p.amount)+'</b></button>'; }
   const o=e.o, t=o.kind==='payout'?'Выплата · '+wName(o.worker_id):o.kind==='expense'?'Выдача кассы':o.kind==='income'?'Оплата от кастомеров (старая запись)':'Долг до начала учёта';
-  return '<div class="hm" data-op="'+o.id+'"><span class="ic">'+(o.kind==='payout'||o.kind==='expense'?'↗':'↙')+'</span>'+esc(t)+(o.note?' · '+esc(o.note):'')+'<b>'+(o.kind==='payout'||o.kind==='expense'?'−':'')+m$(o.amount)+'</b></div>';
+  return '<div class="mrow"><div class="av s">'+(o.kind==='payout'||o.kind==='expense'?'↗':'↙')+'</div><div class="mid"><div class="nm">'+esc(t)+'</div><div class="sm">'+(o.note?esc(o.note):'вручную')+'</div></div>'+
+    '<b>'+(o.kind==='payout'||o.kind==='expense'?'−':'')+m$(o.amount)+'</b></div>';
 }
 function renderHist(){
   const sc=$('#scrHist'), keep=sc.scrollTop;
   const ppl=freq('c').slice(0,6).map(c=>({id:c.id,name:c.name})).concat(freq('w').slice(0,3).map(w=>({id:w.id,name:w.name})));
-  const chips=[['debt','Долги'],['none','Без кастомеров'],['shifts','Смены'],['money','Деньги']].map(c=>'<button class="pill" data-chip="'+c[0]+'" aria-pressed="'+(histChip===c[0])+'">'+c[1]+'</button>').join('')+
+  const chips=(histSeg==='shifts'?[['debt','Долги'],['none','Без кастомеров']]:[]).map(c=>'<button class="pill" data-chip="'+c[0]+'" aria-pressed="'+(histChip===c[0])+'">'+c[1]+'</button>').join('')+
     ppl.map(p=>'<button class="pill" data-chip="p:'+p.id+'" aria-pressed="'+(histChip==='p:'+p.id)+'">'+esc(p.name)+'</button>').join('');
   let h='<div class="big"><div><h1>История</h1></div><button class="pill" data-srch style="margin-bottom:6px">Поиск</button></div>'+
+    '<div class="segbig"><button data-seg="shifts" aria-pressed="'+(histSeg==='shifts')+'">Смены</button><button data-seg="money" aria-pressed="'+(histSeg==='money')+'">Расчёты</button><i></i></div>'+
     '<div class="search'+(searchOpen?' open':'')+'"><div><input id="hq" type="search" placeholder="Имя, дата, сумма" value="'+esc(histQ)+'"><div class="pills" style="margin-bottom:6px">'+chips+'</div></div></div>';
   const list=entries().filter(histMatch);
-  if(!list.length) h+='<div class="empty">'+(histQ||histChip?'Ничего не нашлось':'Записей пока нет')+'</div>';
+  if(!list.length) h+='<div class="empty">'+(histQ||histChip?'Ничего не нашлось':histSeg==='shifts'?'Смен пока нет':'Расчётов пока нет')+'</div>';
   let curM='', curD='';
   const monthTot={};
-  list.forEach(e=>{ if(e.kind!=='shift') return; const m=e.date.slice(0,7); const t=monthTot[m]||(monthTot[m]={n:0,sum:0}); t.n++; t.sum+=e.s.total; });
+  list.forEach(e=>{ const m=e.date.slice(0,7), t=monthTot[m]||(monthTot[m]={n:0,sum:0});
+    if(e.kind==='shift'){ t.n++; t.sum+=e.s.total; } else if(e.kind==='pay'){ t.n++; t.sum+=e.p.amount; } });
   list.forEach(function(e){
     const m=e.date.slice(0,7);
     if(m!==curM){ curM=m; curD=''; const p=m.split('-'), t=monthTot[m]||{n:0,sum:0};
-      h+='<div class="month"><b>'+MONFULL[Number(p[1])-1]+(p[0]!==today().slice(0,4)?' '+p[0]:'')+'</b><span>'+t.n+' '+plural(t.n,'смена','смены','смен')+' · '+m$(t.sum)+'</span></div>'; }
-    if(e.date!==curD){ curD=e.date; h+='<div class="day" id="d-'+e.date+'">'+dayLabel(e.date)+'</div>'; }
-    h+= e.kind==='shift' ? shiftCardHTML(e.s) : '<div class="list plain" style="margin-top:6px">'+moneyRowHTML(e)+'</div>';
+      h+='<div class="month"><b>'+MONFULL[Number(p[1])-1]+(p[0]!==today().slice(0,4)?' '+p[0]:'')+'</b><span>'+
+        (histSeg==='shifts'?t.n+' '+plural(t.n,'смена','смены','смен')+' · '+m$(t.sum):'получено '+m$(t.sum))+'</span></div>'; }
+    if(e.date!==curD){ curD=e.date;
+      h+= histSeg==='shifts' ? '<a id="d-'+e.date+'"></a>' : '<div class="day" id="m-'+e.date+'">'+dayLabel(e.date)+'</div>'; }
+    h+= e.kind==='shift' ? shiftCardHTML(e.s) : moneyRowHTML(e);
   });
   sc.innerHTML=h; sc.scrollTop=keep;
   sc.querySelector('[data-srch]').onclick=()=>{ searchOpen=!searchOpen; haptic('tap'); sc.querySelector('.search').classList.toggle('open',searchOpen); if(searchOpen) setTimeout(()=>$('#hq').focus(),250); };
+  sc.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{ if(histSeg===b.dataset.seg) return; histSeg=b.dataset.seg; histChip=''; haptic('pick'); sc.scrollTop=0; renderHist(); rise(sc); });
   const hq=$('#hq'); hq.oninput=()=>{ histQ=hq.value; clearTimeout(hq._t); hq._t=setTimeout(()=>{ renderHist(); const n=$('#hq'); n.focus(); n.setSelectionRange(n.value.length,n.value.length); },250); };
   sc.querySelectorAll('[data-chip]').forEach(b=>b.onclick=()=>{ histChip=histChip===b.dataset.chip?'':b.dataset.chip; haptic('pick'); renderHist(); });
   sc.querySelectorAll('[data-shift]').forEach(function(w){
@@ -1295,7 +1363,7 @@ function scheduleReload(){ clearTimeout(reloadT); reloadT=setTimeout(reload,500)
 let started=false;
 async function boot(){
   loadQueue();
-  if(!S.shifts.length && loadCache()){ booting=false; renderAll(); }   // сразу из памяти — без заставки
+  if(!S.shifts.length && loadCache()){ booting=false; renderAll(); rise(tab==='now'?$('#scrNow'):$('#scrHist')); }   // сразу из памяти — без заставки
   try{
     try{ await refreshAuth(); }catch(_){}
     await loadAll(); saveCache();
@@ -1305,7 +1373,7 @@ async function boot(){
     applyPending();
   }
   $('#gate').classList.remove('on');
-  booting=false; renderAll();
+  const first=booting; booting=false; renderAll(); if(first) rise(tab==='now'?$('#scrNow'):$('#scrHist'));
   if(await flushQueue()) await reload();
   if(!started){
     started=true;

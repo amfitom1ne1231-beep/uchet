@@ -355,6 +355,102 @@ body.sheeted #scrim{opacity:1;pointer-events:auto;transition-duration:var(--open
 #gate p{color:var(--t2);margin:10px 0 22px;line-height:1.5;max-width:300px}
 #gate .btn{max-width:300px}
 
+
+/* ======================= ЖИВОЕ: появление, свечение, график ======================= */
+#undo{pointer-events:none} #undo.on{pointer-events:auto}   /* спрятанная плашка не должна ловить нажатия */
+.rise{animation:rise .7s var(--spring) both;animation-delay:calc(var(--i,0) * 55ms)}
+@keyframes rise{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:none}}
+.face:active,.lastsh:active,.startcta:active,.mrow:active{transform:scale(.98)}
+.face,.lastsh,.startcta,.mrow{transition:transform .35s var(--spring)}
+/* свечение за главной суммой — медленно переливается */
+#scrNow{isolation:isolate}
+.aurora{position:absolute;left:-40px;right:-40px;top:-60px;height:420px;z-index:-1;pointer-events:none;overflow:hidden;
+  -webkit-mask-image:linear-gradient(#000 40%,transparent);mask-image:linear-gradient(#000 40%,transparent)}
+.aurora i{position:absolute;width:300px;height:300px;border-radius:50%;filter:blur(60px);opacity:.38;animation:drift 18s ease-in-out infinite alternate}
+.aurora i:nth-child(1){left:-30px;top:40px}
+.aurora i:nth-child(2){right:-20px;top:-10px;animation-duration:23s;animation-delay:-6s}
+.aurora i:nth-child(3){left:35%;top:130px;width:220px;height:220px;animation-duration:15s;animation-delay:-3s;opacity:.25}
+.aurora.warm i:nth-child(1){background:#d9a441}.aurora.warm i:nth-child(2){background:#8a5a1c}.aurora.warm i:nth-child(3){background:#ffffff}
+.aurora.calm i:nth-child(1){background:#2f7d55}.aurora.calm i:nth-child(2){background:#1d4e6b}.aurora.calm i:nth-child(3){background:#ffffff}
+@keyframes drift{0%{transform:translate(0,0) scale(1)}50%{transform:translate(40px,30px) scale(1.15)}100%{transform:translate(-30px,10px) scale(.95)}}
+.hero .v.ok{display:flex;align-items:center;gap:12px;color:var(--t1)}
+.hero .chk{color:var(--ok)}
+.hero .chk path{stroke-dasharray:24;stroke-dashoffset:0}
+.rise .chk path,.hero.rise .chk path{animation:draw .9s .25s var(--spring) both}
+@keyframes draw{from{stroke-dashoffset:24}to{stroke-dashoffset:0}}
+/* начать смену */
+.startcta{display:flex;align-items:center;gap:12px;width:100%;margin-top:18px;padding:14px 14px 14px 18px;border-radius:22px;text-align:left;
+  background:linear-gradient(135deg,rgba(255,255,255,.12),rgba(255,255,255,.04));box-shadow:inset 0 .5px 0 rgba(255,255,255,.2)}
+.startcta .mid{flex:1;min-width:0}.startcta .t{font-size:18px;font-weight:600}.startcta .s{font-size:13px;color:var(--t2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.startcta .avs .av{box-shadow:0 0 0 2px #1a1a1c}
+.startcta .play{width:48px;height:48px;border-radius:50%;background:#fff;color:#000;display:grid;place-items:center;flex:0 0 48px;
+  box-shadow:0 0 0 0 rgba(255,255,255,.5);animation:ping 2.8s ease-out infinite}
+@keyframes ping{0%{box-shadow:0 0 0 0 rgba(255,255,255,.35)}70%{box-shadow:0 0 0 14px rgba(255,255,255,0)}100%{box-shadow:0 0 0 0 rgba(255,255,255,0)}}
+/* неделя */
+.week .wh{display:flex;align-items:flex-start;justify-content:space-between}
+.week .tot{font-size:30px;font-weight:300}
+.delta{font-size:15px;font-weight:600;text-align:right;padding:4px 10px;border-radius:12px}
+.delta span{display:block;font-size:11px;font-weight:500;opacity:.7}
+.delta.up{color:var(--ok);background:rgba(78,166,114,.12)} .delta.down{color:var(--debt);background:rgba(217,164,65,.12)}
+.chart{position:relative;display:flex;align-items:flex-end;gap:8px;height:150px;margin-top:16px;padding-top:22px}
+.chart .col{flex:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;position:relative}
+.chart .col i{display:block;width:100%;height:var(--h);min-height:4px;border-radius:7px;transform-origin:bottom;
+  background:linear-gradient(to top,rgba(255,255,255,.28),rgba(255,255,255,.85));transition:transform .3s var(--spring),filter .3s}
+.chart .col.zero i{height:4px;background:rgba(255,255,255,.12)}
+.chart .col.future i{background:rgba(255,255,255,.06)}
+.chart .col.today i{background:linear-gradient(to top,rgba(255,255,255,.55),#fff);box-shadow:0 0 18px rgba(255,255,255,.45),0 0 2px #fff}
+.chart .col.today .d{color:var(--t1);font-weight:700}
+.chart .col.sel i{filter:brightness(1.25);transform:scaleX(1.08)}
+.chart .val{font-size:10.5px;color:var(--t2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.chart .d{font-size:11.5px;color:var(--t3)}
+.rise .chart .col i{animation:grow .9s var(--spring) both;animation-delay:calc(.15s + var(--i) * 60ms)}
+.rise .chart .val{animation:fadein .4s both;animation-delay:calc(.55s + var(--i) * 60ms)}
+@keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.chart .tip{position:absolute;top:-18px;width:150px;padding:8px 10px;border-radius:12px;background:#fff;color:#000;font-size:12.5px;line-height:1.35;
+  text-align:center;pointer-events:none;opacity:0;transform:translateY(6px) scale(.9);transition:opacity .2s,transform .35s var(--spring);z-index:2;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.chart .tip.on{opacity:1;transform:none}
+.chart .tip b{display:block;font-size:13px}.chart .tip em{display:block;font-style:normal;color:#777;font-size:11px;margin-top:2px}
+.week .ops{margin-top:16px;display:flex;flex-direction:column;gap:9px}
+.week .op{display:grid;grid-template-columns:62px 1fr auto;align-items:center;gap:10px;font-size:13.5px}
+.week .op span{color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.week .op b{font-weight:500;font-variant-numeric:tabular-nums}
+.week .op .bar{height:6px;border-radius:3px;background:rgba(255,255,255,.07);overflow:hidden}
+.week .op .bar i{display:block;height:100%;width:var(--w);border-radius:3px;background:linear-gradient(90deg,rgba(255,255,255,.4),#fff);transform-origin:left}
+.rise .week .op .bar i,.week.rise .op .bar i{animation:growx 1s var(--spring) both;animation-delay:calc(.4s + var(--i,0) * 80ms)}
+@keyframes growx{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+/* последняя смена и статусы */
+.lastsh{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);border-radius:22px;padding:14px 16px}
+.lastsh .mid{flex:1;min-width:0}.lastsh .nm{font-size:16px}.lastsh .sm{font-size:13px;color:var(--t2);margin:2px 0 10px}
+.rt{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 0 auto}
+.rt .sum{font-size:18px;font-weight:500}
+.st{font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:8px;white-space:nowrap}
+.st.ok{color:var(--ok);background:rgba(78,166,114,.13)} .st.debt{color:var(--debt);background:rgba(217,164,65,.14)}
+.st.none{color:var(--t2);box-shadow:inset 0 0 0 1px var(--line2)}
+/* история: карточка смены */
+.hc2{display:flex;align-items:center;gap:14px;padding:14px 16px;position:relative}
+.hc2 .dt{width:44px;flex:0 0 44px;text-align:center}
+.hc2 .dt b{display:block;font-size:24px;font-weight:300;line-height:1}
+.hc2 .dt span{display:block;font-size:11px;color:var(--t2);margin-top:3px}
+.hc2 .dt.now b{color:#fff;font-weight:500}.hc2 .dt.now span{color:var(--live)}
+.hc2 .mid{flex:1;min-width:0}
+.hc2 .r1{display:flex;align-items:baseline;gap:8px}
+.hc2 .tm{font-size:16px;font-weight:500}.hc2 .hrs{font-size:13px;color:var(--t2)}
+.hc2 .mini{margin:8px 0 7px}
+.hc2 .ppl{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t1)}
+.hc2 .pend{position:absolute;left:74px;bottom:3px;font-size:10.5px;color:var(--debt)}
+.swipe+.swipe{margin-top:8px}
+.segbig{position:relative;display:flex;background:var(--card);border-radius:14px;padding:3px;margin:4px 0 10px}
+.segbig button{flex:1;height:36px;border-radius:11px;font-size:14.5px;font-weight:600;color:var(--t2);position:relative;z-index:1;transition:color .3s}
+.segbig button[aria-pressed="true"]{color:#000}
+.segbig i{position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:11px;background:#fff;transition:transform .45s var(--spring)}
+.segbig button:nth-child(2)[aria-pressed="true"]~i{transform:translateX(100%)}
+.mrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);border-radius:18px;padding:12px 14px;margin-top:8px}
+.mrow .mid{flex:1;min-width:0}.mrow .nm{font-size:15.5px}.mrow .sm{font-size:12.5px;color:var(--t2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrow b{font-weight:500;font-variant-numeric:tabular-nums}.mrow b.plus{color:var(--ok)}
+/* живое кольцо таймера */
+.ringbox .pg{filter:drop-shadow(0 0 6px rgba(255,255,255,.55))}
+.lcard:not(.paused) .ringbox:after{content:'';position:absolute;inset:18px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.07),transparent 70%);animation:breathe 4s ease-in-out infinite}
 @media (prefers-reduced-motion:reduce){
   *,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important}
   .screen,.level,.sheet,#app,#undo,#toast,.mdet,.search,#nav{transition:opacity .2s!important;transform:none!important}
@@ -391,9 +487,9 @@ body.sheeted #scrim{opacity:1;pointer-events:auto;transition-duration:var(--open
 <div id="done"><div class="glass"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>
 <div id="gate"></div>
 
-<script>const APP_VERSION='2026-11-11.n3';</script>
+<script>const APP_VERSION='2026-11-11.n4';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-<script src="core.js?v=2026-11-11.n3"></script>
-<script src="app.js?v=2026-11-11.n3"></script>
+<script src="core.js?v=2026-11-11.n4"></script>
+<script src="app.js?v=2026-11-11.n4"></script>
 </body>
 </html>
