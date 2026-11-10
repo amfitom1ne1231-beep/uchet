@@ -57,14 +57,16 @@ body.sheeted #app{transform:scale(.94) translateY(calc(var(--st) + 8px));border-
 .big{display:flex;align-items:flex-end;justify-content:space-between;min-height:52px;margin:6px 4px 8px;padding-right:46px}
 .big h1{font-size:34px;font-weight:700;letter-spacing:.005em}
 .big .sub{font-size:13px;color:var(--t2);margin-top:2px}
-/* живые часы вместо заголовка: цифры одной ширины и перекатываются, секунды мелко сверху — как копейки у сумм */
-.nowclock{display:flex;align-items:flex-start;font-variant-numeric:tabular-nums;letter-spacing:0;line-height:1.12}
-.nowclock .dg{display:inline-block;min-width:.6em;text-align:center}
-.nowclock .dg.sep{min-width:0;padding:0 .03em;position:relative;top:-.05em;animation:colon 2s ease-in-out infinite}
-.nowclock .dg.roll{animation:roll .42s var(--spring)}
-.nowclock .ss{font-size:.44em;font-weight:600;color:var(--t2);margin:.42em 0 0 .3em}
-.nowclock .ss .dg{min-width:.62em}
-@keyframes colon{0%,100%{opacity:1}50%{opacity:.3}}
+/* шапка «Сейчас»: короткая фраза о том, что происходит; при смене фразы старая уходит вверх, новая поднимается */
+.big .nowwrap{flex:1;min-width:0}
+.nowhead{position:relative;height:41px;overflow:hidden;white-space:nowrap}
+.nowhead .ph{position:absolute;left:0;top:0;height:41px;max-width:100%;display:flex;align-items:center;gap:11px;line-height:41px}
+.nowhead .ph .tx{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.nowhead .ph .dot{width:10px;height:10px;flex:0 0 10px;margin-left:2px}
+.nowhead .ph.in{animation:headIn .46s var(--spring)}
+.nowhead .ph.out{animation:headOut .34s var(--out) forwards}
+@keyframes headIn{from{transform:translateY(60%);opacity:0;filter:blur(2px)}to{transform:none;opacity:1;filter:none}}
+@keyframes headOut{to{transform:translateY(-55%);opacity:0;filter:blur(2px)}}
 #gear{position:fixed;z-index:20;top:calc(var(--st) + 14px);right:16px;width:38px;height:38px;border-radius:50%;
   display:grid;place-items:center;transition:transform .2s var(--spring),opacity .2s}
 #gear:active{transform:scale(.88)}
@@ -778,9 +780,9 @@ html,body{background:#000}
 <div id="done"><div class="glass"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>
 <div id="gate"></div>
 
-<script>const APP_VERSION='2026-11-15.3';</script>
+<script>const APP_VERSION='2026-11-15.4';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-<script src="core.js?v=2026-11-15.3"></script>
-<script src="app.js?v=2026-11-15.3"></script>
+<script src="core.js?v=2026-11-15.4"></script>
+<script src="app.js?v=2026-11-15.4"></script>
 </body>
 </html>

@@ -518,9 +518,9 @@ const RC=2*Math.PI*120;
 let liveIdx=0;
 function renderNow(){
   const sc=$('#scrNow');
-  // вместо надписи — живые часы учёта: минуты перекатываются, секунды тикают, двоеточие дышит
-  const head='<div class="big"><div><h1 class="nowclock num" data-nowclock><span data-hm></span><span class="ss" data-ss></span></h1><div class="sub" data-day>'+esc(longDate())+'</div></div></div>';
-  if(booting && !S.shifts.length && !S.live.length){ sc.innerHTML=head+'<div class="sk"></div><div class="sk"></div><div class="sk"></div>'; tickHead(); return; }
+  // шапка говорит о том, что сейчас происходит: без смены здоровается, на смене — её состояние (paintHead)
+  const head='<div class="big"><div class="nowwrap"><h1 class="nowhead" data-nowhead></h1><div class="sub" data-day></div></div></div>';
+  if(booting && !S.shifts.length && !S.live.length){ sc.innerHTML=head+'<div class="sk"></div><div class="sk"></div><div class="sk"></div>'; paintHead(); return; }
   const lives=liveRows();
   if(lives.length){
     if(liveIdx>=lives.length) liveIdx=0;
@@ -530,21 +530,52 @@ function renderNow(){
     const car=$('#car');
     requestAnimationFrame(()=>{ car.scrollLeft=liveIdx*car.clientWidth; });
     car.addEventListener('scroll',()=>{ const i=Math.round(car.scrollLeft/Math.max(1,car.clientWidth)); if(i!==liveIdx){ liveIdx=i; haptic('pick');
-      document.querySelectorAll('.dots i').forEach((d,k)=>d.classList.toggle('on',k===i)); } },{passive:true});
+      document.querySelectorAll('.dots i').forEach((d,k)=>d.classList.toggle('on',k===i)); paintHead(); } },{passive:true});
     car.querySelectorAll('.lcard').forEach(bindLiveCard);
-    tickLive(); tickHead(); renderDrawer(); syncDock();
+    tickLive(); paintHead(); renderDrawer(); syncDock();
     return;
   }
   sc.innerHTML=head+dashboardHTML();
-  bindDashboard(sc); tickHead(); renderDrawer(); syncDock();
+  bindDashboard(sc); paintHead(); renderDrawer(); syncDock();
 }
-// часы в шапке «Сейчас» — время учёта (Камбоджа), где бы ни был телефон
-function tickHead(){
-  const h=document.querySelector('#scrNow [data-nowclock]'); if(!h) return;
-  const d=new Date(nowMs()+KH_OFF), hm=z2(d.getUTCHours())+':'+z2(d.getUTCMinutes());
-  odo(h.querySelector('[data-hm]'),hm); odo(h.querySelector('[data-ss]'),z2(d.getUTCSeconds()));
-  h.setAttribute('aria-label','Сейчас '+hm);
-  const day=document.querySelector('#scrNow [data-day]'), ld=longDate(); if(day && day.textContent!==ld) day.textContent=ld;   // полночь — дата сменится сама
+// кто открыл учёт: владелец — оператор «это я», остальные — оператор, к которому привязан их Telegram, иначе имя из Telegram
+function myName(){
+  if(isOwner){ const w=S.workers.find(w=>w.is_me&&w.active!==false); return w?w.name:''; }
+  const tu=TG&&TG.initDataUnsafe&&TG.initDataUnsafe.user, id=String((tu&&tu.id)||(user&&user.app_metadata&&user.app_metadata.tg_id)||'');
+  const w=id&&S.workers.find(w=>String(w.tg_id||'')===id&&w.active!==false);
+  return w?w.name:((tu&&tu.first_name)||'');
+}
+// что сказать в шапке «Сейчас»: смены нет — приветствие по времени суток, смена на экране — её состояние
+function headState(){
+  const lives=liveRows(), l=lives.length?lives[Math.min(liveIdx,lives.length-1)]:null, day=longDate();
+  if(l){
+    const from=tHM(Date.parse(l.started_at));
+    if(l.finished_at) return {t:'Смена закончена',dot:'debt',sub:day+' · '+from+'–'+tHM(Date.parse(l.finished_at))+' · ждёт сохранения'};
+    return l.paused_at?{t:'Пауза',dot:'debt',sub:day+' · с '+from}:{t:'Идёт смена',dot:'live',sub:day+' · с '+from};
+  }
+  if(booting && !S.workers.length) return {t:'',dot:'',sub:day};   // пока данные не пришли — молчим, чтобы не здороваться дважды (сначала без имени, потом с именем)
+  const h=Number(khParts(nowMs()).t.slice(0,2)), nm=myName();
+  return {t:(h>=5&&h<12?'Доброе утро':h>=12&&h<18?'Добрый день':h>=18&&h<23?'Добрый вечер':'Доброй ночи')+(nm?', '+nm:''),dot:'',sub:day};
+}
+// фраза меняется перекатом (старая уходит вверх, новая поднимается), в остальное время стоит неподвижно
+let headLast=null;
+function paintHead(){
+  const h=document.querySelector('#scrNow [data-nowhead]'); if(!h) return;
+  const st=headState(), key=st.dot+'|'+st.t, html=(st.dot?'<span class="dot '+st.dot+'"></span>':'')+'<span class="tx">'+esc(st.t)+'</span>';
+  const day=document.querySelector('#scrNow [data-day]'); if(day && day.textContent!==st.sub) day.textContent=st.sub;
+  const cur=h.querySelector('.ph:not(.out)');
+  if(!st.t || (cur && cur.dataset.k===key)) return;
+  // длинное имя не переносим: сначала чуть уменьшаем шрифт, не помогло — оставляем от имени первое слово
+  const fit=el=>{ const tx=el.querySelector('.tx'), over=()=>{ const r=document.createRange(); r.selectNodeContents(tx); return r.getBoundingClientRect().width>tx.getBoundingClientRect().width+.3; };
+    const shrink=()=>{ let fs=34; el.style.fontSize=''; while(over() && fs>25){ fs-=1; el.style.fontSize=fs+'px'; } };
+    shrink(); const m=over()&&st.t.match(/^(.+?, \S+)\s/); if(m){ tx.textContent=m[1]; shrink(); } };
+  const ph=document.createElement('span'); ph.className='ph'; ph.dataset.k=key; ph.innerHTML=html;
+  // движение — только когда фраза правда сменилась (а не при первой отрисовке и не при уменьшенном движении)
+  const anim=headLast!==key && !reduce() && !document.hidden;
+  if(cur){ if(anim){ cur.classList.add('out'); setTimeout(()=>cur.remove(),420); } else cur.remove(); }
+  else h.querySelectorAll('.ph').forEach(x=>x.remove());
+  h.appendChild(ph); fit(ph); if(anim) ph.classList.add('in');
+  headLast=key;
 }
 function longDate(){ const t=today(), d=new Date(t+'T00:00Z');
   return ['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'][d.getUTCDay()]+', '+d.getUTCDate()+' '+MONGEN[d.getUTCMonth()]; }
@@ -565,23 +596,20 @@ function pTime(l,id,kind){
   const x=liveSummary(l,now), r=(kind==='c'?liveSplit(l,x.c.total,now):liveWorkerSplit(l,x.c.total/2,now)).res.find(z=>z.id===id);
   return dur(ms)+(r&&r.amount>0.004?'<em>'+m$(r.amount)+'</em>':'');
 }
-const lstatHTML=(l,paused)=>(paused?'<span class="dot debt"></span>Пауза':'<span class="dot live"></span>Идёт смена')+' · с '+tHM(Date.parse(l.started_at));
 const pauseBtnHTML=paused=>paused?'<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>Продолжить':
   '<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
 // пауза меняет карточку на месте, без перерисовки: кнопка плавно вытягивается в «Продолжить», часы не моргают
 function paintPause(card,l){
   const p=!!l.paused_at;
   card.classList.toggle('paused',p); card.classList.toggle('tone-debt',p); card.classList.toggle('tone-live',!p);
-  const st=card.querySelector('.lstat'); if(st) st.innerHTML=lstatHTML(l,p);
   const pb=card.querySelector('[data-pause]'); if(pb){ pb.innerHTML=pauseBtnHTML(p); pb.setAttribute('aria-label',p?'Продолжить':'Пауза'); }
-  tickLive(); syncDock(); tellNative(true);
+  tickLive(); paintHead(); syncDock(); tellNative(true);
 }
 const pauseQ={};   // ответы сервера по паузе: по одной очереди на смену
 function liveCardHTML(l){
   const fin=!!l.finished_at, paused=!!l.paused_at&&!fin, x=liveSummary(l,nowMs());
   if(fin){
     return '<div class="card lcard fin sheen tone-debt" data-live="'+l.id+'">'+
-      '<div class="lstat"><span class="dot debt"></span>Смена закончена · ждёт сохранения</div>'+
       '<div class="hero" style="text-align:center;padding:18px 0 8px"><div class="v">'+moneyHTML(x.c.total)+'</div>'+
       '<div class="s">'+x.h+' '+hourWord(x.h)+' · '+tHM(x.s)+'–'+tHM(x.e)+' · '+esc((l.worker_ids||[]).map(wName).join(', '))+'</div></div>'+
       (locked?'':'<button class="btn" data-open-fin style="margin-top:12px">Открыть итог</button>')+'</div>';
@@ -591,7 +619,6 @@ function liveCardHTML(l){
     '<line class="notch" x1="250" y1="130" x2="258" y2="130" stroke-width="2" transform="rotate(180 130 130)"/></svg>';
   const ws=l.worker_ids||[], cs=l.customer_ids||[];
   return '<div class="card lcard sheen '+(paused?'paused tone-debt':'tone-live')+'" data-live="'+l.id+'" style="'+sheenDelay()+'">'+
-    '<div class="lstat">'+lstatHTML(l,paused)+'</div>'+
     '<div class="ringbox">'+ring+'<div class="ringin"><div class="clock num" data-clock>0:00:00</div>'+
       '<div class="k">к оплате <b data-due></b></div><div class="pz num" data-pz></div></div></div>'+
     (locked?'':'<button class="pausebtn" data-pause aria-label="'+(paused?'Продолжить':'Пауза')+'">'+pauseBtnHTML(paused)+'</button>')+
@@ -636,7 +663,9 @@ function tickLive(){
     });
   });
 }
-setInterval(()=>{ if(!document.hidden){ tickLive(); tickHead(); } },1000);
+setInterval(()=>{ if(!document.hidden){ tickLive(); paintHead(); } },1000);
+// ширина окна поменялась — фразу в шапке подгоняем заново (без движения)
+window.addEventListener('resize',()=>{ const h=document.querySelector('#scrNow [data-nowhead]'); if(h){ h.innerHTML=''; paintHead(); } });
 function putLive(row){
   if(!row||!row.id) return;
   const i=(S.live||[]).findIndex(x=>x.id===row.id);
@@ -823,8 +852,7 @@ function sparkle(x,y,n){
 }
 // подсказки под суммой — сменяют друг друга
 function insights(){
-  const out=[], h=Number(khParts(nowMs()).t.slice(0,2));
-  out.push(h>=5&&h<12?'Доброе утро':h>=12&&h<18?'Добрый день':h>=18&&h<23?'Добрый вечер':'Доброй ночи');
+  const out=[];
   const last=S.shifts.find(s=>!s.pending); if(last) out.push('Последняя смена закончилась '+agoText(shiftEndMs(last)));
   const wk=weekStats(), prev=prevWeekSum();
   if(wk.n) out.push('За неделю '+m$(wk.sum)+(prev>0?' · '+(wk.sum>=prev?'+':'−')+Math.abs(Math.round((wk.sum-prev)/prev*100))+'% к прошлой':''));
@@ -839,7 +867,7 @@ function insights(){
 let tickerT=null;
 function startTicker(sc){
   const t=sc.querySelector('[data-ticker]'); if(!t) return;
-  const list=insights(); let i=0;
+  const list=insights(); let i=0; if(!list.length) return;
   const show=()=>{ const span=document.createElement('span'); span.textContent=list[i%list.length]; i++;
     const old=t.querySelector('span'); if(old){ old.classList.add('out'); setTimeout(()=>old.remove(),450); } t.appendChild(span); };
   show(); clearInterval(tickerT); tickerT=setInterval(()=>{ if(!document.hidden && t.isConnected) show(); },4200);
