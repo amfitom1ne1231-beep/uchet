@@ -616,7 +616,7 @@ function shiftCardHTML(s){
 }
 function moneyRowHTML(e){
   if(e.kind==='pay') return '<div class="hm" data-pay="'+e.p.id+'"><span class="ic">$</span>'+esc(cName(e.p.customer_id))+' заплатил<b>'+m$(e.p.amount)+'</b></div>';
-  const o=e.o, t=o.kind==='payout'?'Выплата · '+wName(o.worker_id):o.kind==='expense'?'Выдача кассы':o.kind==='income'?'Оплата от игроков (старая запись)':'Долг до начала учёта';
+  const o=e.o, t=o.kind==='payout'?'Выплата · '+wName(o.worker_id):o.kind==='expense'?'Выдача кассы':o.kind==='income'?'Оплата от кастомеров (старая запись)':'Долг до начала учёта';
   return '<div class="hm" data-op="'+o.id+'"><span class="ic">'+(o.kind==='payout'||o.kind==='expense'?'↗':'↙')+'</span>'+esc(t)+(o.note?' · '+esc(o.note):'')+'<b>'+(o.kind==='payout'||o.kind==='expense'?'−':'')+m$(o.amount)+'</b></div>';
 }
 function renderHist(){
@@ -865,7 +865,7 @@ function finishLevel(sh,d,title){
     b.querySelector('[data-save]').onclick=function(){ d.note=note.value; d.discount=Math.max(0,parseAmt(disc.value)); saveDraft(sh,d,this); };
     const bk=b.querySelector('[data-back]'); if(bk) bk.onclick=async()=>{
       const l=(S.live||[]).find(z=>z.id===d.liveId);
-      if(l&&l.finished_at && !await ask('Смена продолжится. Время с '+tHM(Date.parse(l.finished_at))+' до сейчас тоже пойдёт в игру. Вернуться к смене?')) return;
+      if(l&&l.finished_at && !await ask('Смена продолжится. Время с '+tHM(Date.parse(l.finished_at))+' до сейчас тоже пойдёт в оплату. Вернуться к смене?')) return;
       const {data,error}=await sb.rpc('live_action',{p_id:d.liveId,p_action:'unfinish'}); if(error) return fail(error);
       if(data&&data.id) putLive(data); haptic('ok'); sh.close(); renderNow(); };
     const dr=b.querySelector('[data-drop]'); if(dr) dr.onclick=()=>{
