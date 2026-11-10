@@ -358,20 +358,24 @@ body.sheeted #scrim{opacity:1;pointer-events:auto;transition-duration:var(--open
 
 /* ======================= ЖИВОЕ: появление, свечение, график ======================= */
 #undo{pointer-events:none} #undo.on{pointer-events:auto}   /* спрятанная плашка не должна ловить нажатия */
-.rise{animation:rise .7s var(--spring) both;animation-delay:calc(var(--i,0) * 55ms)}
+.rise{animation:rise .7s var(--spring) backwards;animation-delay:calc(var(--i,0) * 55ms)}
 @keyframes rise{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:none}}
 .face:active,.lastsh:active,.startcta:active,.mrow:active{transform:scale(.98)}
 .face,.lastsh,.startcta,.mrow{transition:transform .35s var(--spring)}
 /* свечение за главной суммой — медленно переливается */
 #scrNow{isolation:isolate}
-.aurora{position:absolute;left:-40px;right:-40px;top:-60px;height:420px;z-index:-1;pointer-events:none;overflow:hidden;
-  -webkit-mask-image:linear-gradient(#000 40%,transparent);mask-image:linear-gradient(#000 40%,transparent)}
-.aurora i{position:absolute;width:300px;height:300px;border-radius:50%;filter:blur(60px);opacity:.38;animation:drift 18s ease-in-out infinite alternate}
-.aurora i:nth-child(1){left:-30px;top:40px}
-.aurora i:nth-child(2){right:-20px;top:-10px;animation-duration:23s;animation-delay:-6s}
-.aurora i:nth-child(3){left:35%;top:130px;width:220px;height:220px;animation-duration:15s;animation-delay:-3s;opacity:.25}
-.aurora.warm i:nth-child(1){background:#d9a441}.aurora.warm i:nth-child(2){background:#8a5a1c}.aurora.warm i:nth-child(3){background:#ffffff}
-.aurora.calm i:nth-child(1){background:#2f7d55}.aurora.calm i:nth-child(2){background:#1d4e6b}.aurora.calm i:nth-child(3){background:#ffffff}
+.aurora{position:absolute;left:-80px;right:-80px;top:-90px;height:480px;z-index:-1;pointer-events:none;overflow:hidden;will-change:transform}
+.aurora:after{content:'';position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,0) 35%,#000 92%)}
+.aurora i{position:absolute;width:440px;height:440px;border-radius:50%;animation:drift 18s ease-in-out infinite alternate}
+.aurora i:nth-child(1){left:-60px;top:10px}
+.aurora i:nth-child(2){right:-60px;top:-60px;animation-duration:23s;animation-delay:-6s}
+.aurora i:nth-child(3){left:30%;top:120px;width:300px;height:300px;animation-duration:15s;animation-delay:-3s}
+.aurora.warm i:nth-child(1){background:radial-gradient(circle,rgba(217,164,65,.42),rgba(217,164,65,0) 62%)}
+.aurora.warm i:nth-child(2){background:radial-gradient(circle,rgba(160,96,30,.38),rgba(160,96,30,0) 62%)}
+.aurora.warm i:nth-child(3){background:radial-gradient(circle,rgba(255,255,255,.12),rgba(255,255,255,0) 62%)}
+.aurora.calm i:nth-child(1){background:radial-gradient(circle,rgba(47,125,85,.45),rgba(47,125,85,0) 62%)}
+.aurora.calm i:nth-child(2){background:radial-gradient(circle,rgba(29,78,107,.45),rgba(29,78,107,0) 62%)}
+.aurora.calm i:nth-child(3){background:radial-gradient(circle,rgba(255,255,255,.12),rgba(255,255,255,0) 62%)}
 @keyframes drift{0%{transform:translate(0,0) scale(1)}50%{transform:translate(40px,30px) scale(1.15)}100%{transform:translate(-30px,10px) scale(.95)}}
 .hero .v.ok{display:flex;align-items:center;gap:12px;color:var(--t1)}
 .hero .chk{color:var(--ok)}
@@ -451,6 +455,36 @@ body.sheeted #scrim{opacity:1;pointer-events:auto;transition-duration:var(--open
 /* живое кольцо таймера */
 .ringbox .pg{filter:drop-shadow(0 0 6px rgba(255,255,255,.55))}
 .lcard:not(.paused) .ringbox:after{content:'';position:absolute;inset:18px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.07),transparent 70%);animation:breathe 4s ease-in-out infinite}
+
+/* подсказки под суммой */
+.ticker{position:relative;height:22px;margin:10px 4px 0;overflow:hidden;font-size:14px;color:var(--t2)}
+.ticker span{position:absolute;left:0;right:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:tin .5s var(--spring) both}
+.ticker span.out{animation:tout .45s var(--spring) both}
+@keyframes tin{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes tout{from{opacity:1;transform:none}to{opacity:0;transform:translateY(-14px)}}
+.hero{transform-origin:0 0;will-change:opacity,transform}
+/* искры */
+.spark{position:fixed;z-index:95;width:7px;height:7px;border-radius:50%;background:#fff;pointer-events:none;box-shadow:0 0 8px rgba(255,255,255,.9)}
+.spark.gold{background:#ffd27a;box-shadow:0 0 10px rgba(255,190,80,.95)}
+/* потянуть вниз — обновить */
+#ptr{position:fixed;z-index:16;left:50%;top:calc(var(--st) + 18px);transform:translate(-50%,0);opacity:0;pointer-events:none;transition:opacity .2s}
+#ptr.spin{opacity:1!important;animation:spin .8s linear infinite}
+#ptr.spin .a{stroke-dashoffset:46!important}
+@keyframes spin{from{transform:translate(-50%,66px) rotate(0)}to{transform:translate(-50%,66px) rotate(360deg)}}
+/* история: три раздела и «Люди» */
+.segbig.s3 i{width:calc(33.333% - 2px)}
+.segbig.s3[data-at="people"] i{transform:translateX(100%)}
+.segbig.s3[data-at="money"] i{transform:translateX(200%)}
+.segbig.s3 button:nth-child(2)[aria-pressed="true"]~i{transform:none}
+.segbig.s3[data-at="people"] button:nth-child(2)[aria-pressed="true"]~i{transform:translateX(100%)}
+.pplhead{display:flex;align-items:flex-end;justify-content:space-between;margin:6px 4px 8px}
+.pplhead .lbl{font-size:14px;color:var(--t2)}.pplhead .v{font-size:36px;font-weight:200}
+.pdet{display:grid;grid-template-rows:0fr;transition:grid-template-rows .45s var(--spring)}
+.pdet>div{overflow:hidden;padding:0 16px}
+.pdet.open{grid-template-rows:1fr}
+.pdet.open>div{padding:0 16px 14px}
+.pdet .kv{border-top:.5px solid var(--line)}
+.pdet .kv b{color:var(--debt)}
 @media (prefers-reduced-motion:reduce){
   *,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important}
   .screen,.level,.sheet,#app,#undo,#toast,.mdet,.search,#nav{transition:opacity .2s!important;transform:none!important}
@@ -487,9 +521,9 @@ body.sheeted #scrim{opacity:1;pointer-events:auto;transition-duration:var(--open
 <div id="done"><div class="glass"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>
 <div id="gate"></div>
 
-<script>const APP_VERSION='2026-11-11.n4';</script>
+<script>const APP_VERSION='2026-11-12.n5';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-<script src="core.js?v=2026-11-11.n4"></script>
-<script src="app.js?v=2026-11-11.n4"></script>
+<script src="core.js?v=2026-11-12.n5"></script>
+<script src="app.js?v=2026-11-12.n5"></script>
 </body>
 </html>

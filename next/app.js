@@ -72,7 +72,7 @@ $('#undo button').onclick=()=>{ haptic('ok'); finishUndo(false); };
 })();
 document.addEventListener('visibilitychange',()=>{ if(document.hidden && undoCur) finishUndo(true); });
 function showDone(){
-  const d=$('#done'); d.classList.add('on'); haptic('ok');
+  const d=$('#done'); d.classList.add('on'); haptic('ok'); setTimeout(()=>sparkle(innerWidth/2,innerHeight/2,26),120);
   setTimeout(()=>d.classList.remove('on'),1200);
 }
 // число докручивается к новому значению
@@ -362,6 +362,8 @@ function syncMini(){
   const sc=$(id); let last=0;
   sc.addEventListener('scroll',()=>{
     const y=sc.scrollTop; syncMini();
+    if(id==='#scrNow' && !reduce()){ const au=sc.querySelector('.aurora'), he=sc.querySelector('.hero');
+      if(au) au.style.transform='translateY('+(y*.45)+'px)'; if(he){ he.style.opacity=String(Math.max(0,1-y/220)); he.style.transform='scale('+Math.max(.9,1-y/1400)+')'; } }
     if(y>80 && y-last>6) $('#nav').classList.add('slim'); else if(last-y>6 || y<40) $('#nav').classList.remove('slim');
     last=y;
   },{passive:true});
@@ -548,6 +550,7 @@ function dashboardHTML(){
   } else {
     h+='<div class="hero calm"><div class="lbl">Должны</div><div class="v ok"><svg class="chk" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg> Все рассчитаны</div></div>';
   }
+  h+='<div class="ticker" data-ticker></div>';
   // начать смену — главное действие, когда смены нет
   if(!locked){
     const crew=lastCrew();
@@ -598,6 +601,7 @@ function bindDashboard(sc){
     swipeable(w,{ right:locked?null:()=>settleAll(cid,w), left:true });
   });
   const st=sc.querySelector('[data-start]'); if(st) st.onclick=()=>plusSheet();
+  startTicker(sc);
   const hd=sc.querySelector('[data-hand]'); if(hd) hd.onclick=()=>{ const s=settingsSheet(); manualIssueLevel(s); };
   const ls=sc.querySelector('[data-last]'); if(ls) ls.onclick=()=>shiftSheet(ls.dataset.last,ls);
   // график: нажал на день — всплыла подсказка; второй раз — история этого дня
@@ -618,19 +622,77 @@ function bindDashboard(sc){
 }
 // живые «… назад» на главной
 setInterval(()=>{ document.querySelectorAll('[data-ago]').forEach(e=>e.textContent='закончилась '+agoText(Number(e.dataset.ago))); },30000);
-// появление: блоки по очереди всплывают, цифры набегают — при открытии экрана, не при каждом обновлении
+// появление: блоки по очереди всплывают, цифры набегают — при открытии экрана, не при каждом обновлении.
+// Когда всплыли — снимаем класс: элементы снова обычные (Safari иначе иногда их не дорисовывает).
 function rise(sc){
   if(reduce()) return;
-  [...sc.children].forEach((el,i)=>{ if(el.classList.contains('aurora')) return; el.style.setProperty('--i',Math.min(i,10)); el.classList.remove('rise'); void el.offsetWidth; el.classList.add('rise'); });
+  const els=[...sc.children].filter(el=>!el.classList.contains('aurora'));
+  els.forEach((el,i)=>{ el.style.setProperty('--i',Math.min(i,10)); el.classList.remove('rise'); void el.offsetWidth; el.classList.add('rise'); });
+  clearTimeout(sc._rise); sc._rise=setTimeout(()=>els.forEach(el=>el.classList.remove('rise')),1900);
   sc.querySelectorAll('[data-count]').forEach(el=>{ const v=Number(el.dataset.count); el.dataset.v=0; rollTo(el,v,x=>moneyHTML(x),900); });
 }
+// искры: кто-то рассчитался полностью, смена сохранена
+function sparkle(x,y,n){
+  if(reduce()) return;
+  x=x==null?innerWidth/2:x; y=y==null?innerHeight/2:y;
+  for(let i=0;i<(n||22);i++){
+    const p=document.createElement('i'); p.className='spark'+(i%3===0?' gold':'');
+    p.style.left=x+'px'; p.style.top=y+'px'; document.body.appendChild(p);
+    const a=Math.random()*Math.PI*2, d=60+Math.random()*110, s=.5+Math.random()*.9;
+    p.animate([{transform:'translate(-50%,-50%) scale('+s+')',opacity:1},
+      {transform:'translate(calc(-50% + '+Math.cos(a)*d+'px),calc(-50% + '+(Math.sin(a)*d+40)+'px)) scale(0)',opacity:0}],
+      {duration:700+Math.random()*500,easing:'cubic-bezier(.2,.8,.3,1)'}).onfinish=()=>p.remove();
+  }
+}
+// подсказки под суммой — сменяют друг друга
+function insights(){
+  const out=[], h=Number(khParts(nowMs()).t.slice(0,2));
+  out.push(h>=5&&h<12?'Доброе утро':h>=12&&h<18?'Добрый день':h>=18&&h<23?'Добрый вечер':'Доброй ночи');
+  const last=S.shifts.find(s=>!s.pending); if(last) out.push('Последняя смена закончилась '+agoText(shiftEndMs(last)));
+  const wk=weekStats(), prev=prevWeekSum();
+  if(wk.n) out.push('За неделю '+m$(wk.sum)+(prev>0?' · '+(wk.sum>=prev?'+':'−')+Math.abs(Math.round((wk.sum-prev)/prev*100))+'% к прошлой':''));
+  const from=today().slice(0,7)+'-01', mon=S.shifts.filter(s=>s.work_date>=from), cnt={};
+  mon.forEach(s=>s.customerIds.forEach(id=>cnt[id]=(cnt[id]||0)+1));
+  const top=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0];
+  if(top) out.push('Чаще всех в этом месяце — '+cName(top)+' · '+cnt[top]+' '+plural(cnt[top],'смена','смены','смен'));
+  if(mon.length) out.push('Средняя смена — '+Math.round(mon.reduce((a,s)=>a+s.hours,0)/mon.length)+' ч · '+m$(mon.reduce((a,s)=>a+s.total,0)/mon.length));
+  const dl=debts(); if(dl.length) out.push('Больше всех должен '+cName(dl[0].id)+' · '+m$(dl[0].total));
+  return out;
+}
+let tickerT=null;
+function startTicker(sc){
+  const t=sc.querySelector('[data-ticker]'); if(!t) return;
+  const list=insights(); let i=0;
+  const show=()=>{ const span=document.createElement('span'); span.textContent=list[i%list.length]; i++;
+    const old=t.querySelector('span'); if(old){ old.classList.add('out'); setTimeout(()=>old.remove(),450); } t.appendChild(span); };
+  show(); clearInterval(tickerT); tickerT=setInterval(()=>{ if(!document.hidden && t.isConnected) show(); },4200);
+}
+// потянул «Сейчас» вниз — обновить
+(function(){
+  const sc=$('#scrNow'), ind=document.createElement('div'); ind.id='ptr'; ind.innerHTML='<svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="2.4"/><circle class="a" cx="14" cy="14" r="11" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="69.1" stroke-dashoffset="69.1"/></svg>';
+  document.body.appendChild(ind);
+  let y0=null, d=0, armed=false, busy=false;
+  sc.addEventListener('touchstart',e=>{ if(sc.scrollTop<=0&&!busy&&!sheets.length){ y0=e.touches[0].clientY; d=0; armed=false; } },{passive:true});
+  sc.addEventListener('touchmove',e=>{ if(y0==null) return; d=Math.max(0,e.touches[0].clientY-y0); if(d<=0) return;
+    const k=Math.min(1,d/90); ind.style.opacity=String(Math.min(1,d/40)); ind.style.transform='translate(-50%,'+(Math.min(d,110)*.6)+'px) rotate('+(k*270)+'deg)';
+    ind.querySelector('.a').style.strokeDashoffset=String(69.1*(1-k));
+    if(k>=1 && !armed){ armed=true; haptic('soft'); } else if(k<1 && armed){ armed=false; } },{passive:true});
+  sc.addEventListener('touchend',async()=>{
+    if(y0==null) return; y0=null;
+    if(!armed){ ind.style.opacity='0'; ind.style.transform='translate(-50%,0)'; return; }
+    busy=true; ind.classList.add('spin');
+    await reload(); haptic('tap');
+    ind.classList.remove('spin'); ind.style.opacity='0'; ind.style.transform='translate(-50%,0)'; busy=false;
+    rise($('#scrNow'));
+  });
+})();
 // смахнул должника — заплатил всё (сразу, с «Отменить»)
 async function settleAll(cid,wrap){
   if(!liveReady()){ wrap&&wrap._close(); return; }
   const d=debts().find(x=>x.id===cid); if(!d){ wrap&&wrap._close(); return; }
   const {data,error}=await sb.rpc('settle',{p_customer:cid,p_amount:d.total});
   if(error){ wrap&&wrap._close(); return fail(error); }
-  haptic('ok'); await reload();
+  haptic('ok'); const r0=wrap&&wrap.getBoundingClientRect(); if(r0) sparkle(r0.left+r0.width*.7,r0.top+r0.height/2); await reload();
   offerUndo(cName(cid)+' заплатил '+m$(d.total),{onUndo:async()=>{ const r=await sb.rpc('unsettle',{p_payment:data.id}); if(r.error) return fail(r.error); await reload(); toast('Расчёт отменён'); }});
 }
 
@@ -688,10 +750,11 @@ function renderHist(){
   const chips=(histSeg==='shifts'?[['debt','Долги'],['none','Без кастомеров']]:[]).map(c=>'<button class="pill" data-chip="'+c[0]+'" aria-pressed="'+(histChip===c[0])+'">'+c[1]+'</button>').join('')+
     ppl.map(p=>'<button class="pill" data-chip="p:'+p.id+'" aria-pressed="'+(histChip==='p:'+p.id)+'">'+esc(p.name)+'</button>').join('');
   let h='<div class="big"><div><h1>История</h1></div><button class="pill" data-srch style="margin-bottom:6px">Поиск</button></div>'+
-    '<div class="segbig"><button data-seg="shifts" aria-pressed="'+(histSeg==='shifts')+'">Смены</button><button data-seg="money" aria-pressed="'+(histSeg==='money')+'">Расчёты</button><i></i></div>'+
-    '<div class="search'+(searchOpen?' open':'')+'"><div><input id="hq" type="search" placeholder="Имя, дата, сумма" value="'+esc(histQ)+'"><div class="pills" style="margin-bottom:6px">'+chips+'</div></div></div>';
-  const list=entries().filter(histMatch);
-  if(!list.length) h+='<div class="empty">'+(histQ||histChip?'Ничего не нашлось':histSeg==='shifts'?'Смен пока нет':'Расчётов пока нет')+'</div>';
+    '<div class="segbig s3" data-at="'+histSeg+'"><button data-seg="shifts" aria-pressed="'+(histSeg==='shifts')+'">Смены</button><button data-seg="people" aria-pressed="'+(histSeg==='people')+'">Люди</button><button data-seg="money" aria-pressed="'+(histSeg==='money')+'">Расчёты</button><i></i></div>'+
+    '<div class="search'+(searchOpen?' open':'')+'"><div><input id="hq" type="search" placeholder="Имя, дата, сумма" value="'+esc(histQ)+'">'+(histSeg==='people'?'':'<div class="pills" style="margin-bottom:6px">'+chips+'</div>')+'</div></div>';
+  const list=histSeg==='people'?[]:entries().filter(histMatch);
+  if(histSeg==='people') h+=peopleHTML();
+  if(!list.length && histSeg!=='people') h+='<div class="empty">'+(histQ||histChip?'Ничего не нашлось':histSeg==='shifts'?'Смен пока нет':'Расчётов пока нет')+'</div>';
   let curM='', curD='';
   const monthTot={};
   list.forEach(e=>{ const m=e.date.slice(0,7), t=monthTot[m]||(monthTot[m]={n:0,sum:0});
@@ -727,7 +790,60 @@ function renderHist(){
     });
   });
   sc.querySelectorAll('[data-pay]').forEach(r=>r.onclick=()=>paymentSheet(r.dataset.pay));
+  if(histSeg==='people') bindPeople(sc);
 }
+// «Люди»: кто сколько должен и с каких пор — сортировка в одно нажатие
+let pplSort='debt', pplOpen=null;
+function peopleRows(){
+  const dl=debts(), from=today().slice(0,7)+'-01', by={};
+  S.customers.forEach(c=>by[c.id]={id:c.id,name:c.name,debt:0,items:[],oldest:null,brought:0,n:0,last:null,active:c.active!==false});
+  dl.forEach(d=>{ const x=by[d.id]; if(!x) return; x.debt=d.total; x.items=d.items; x.oldest=d.oldest; });
+  S.shifts.forEach(s=>(s.custLinks||[]).forEach(l=>{ const x=by[l.id]; if(!x) return;
+    if(s.work_date>=from){ x.brought+=(l.share!=null?l.share:l.amount); x.n++; }
+    if(!x.last||s.work_date>x.last) x.last=s.work_date; }));
+  let rows=Object.values(by).filter(x=>x.active||x.debt>0.004);
+  const q=histQ.trim().toLowerCase(); if(q) rows=rows.filter(x=>x.name.toLowerCase().includes(q));
+  const cmp={debt:(a,b)=>b.debt-a.debt||b.brought-a.brought, old:(a,b)=>(a.oldest||'9')<(b.oldest||'9')?-1:(a.oldest||'9')>(b.oldest||'9')?1:b.debt-a.debt,
+    brought:(a,b)=>b.brought-a.brought, name:(a,b)=>String(a.name).localeCompare(b.name)}[pplSort];
+  return rows.sort(cmp);
+}
+function peopleHTML(){
+  const rows=peopleRows(), dl=rows.filter(x=>x.debt>0.004), tot=dl.reduce((a,x)=>a+x.debt,0);
+  let h='<div class="pplhead"><div><div class="lbl">'+(tot>0.004?'Должны':'Долгов нет')+'</div><div class="v">'+(tot>0.004?moneyHTML(tot):'<span style="color:var(--ok)">✓</span>')+'</div></div>'+
+    '<div class="t2" style="font-size:13px;text-align:right">'+dl.length+' из '+rows.length+'<br>должны</div></div>'+
+    '<div class="pills" style="margin:4px 0 10px">'+[['debt','Долг'],['old','Давно должен'],['brought','Принёс за месяц'],['name','А–Я']]
+      .map(c=>'<button class="pill" data-sort="'+c[0]+'" aria-pressed="'+(pplSort===c[0])+'">'+c[1]+'</button>').join('')+'</div>';
+  if(!rows.length) return h+'<div class="empty">Никого не нашлось</div>';
+  const td=Date.parse(today()+'T00:00Z'), days=d=>Math.round((td-Date.parse(d+'T00:00Z'))/864e5);
+  return h+rows.map(x=>{
+    const open=pplOpen===x.id, debt=x.debt>0.004, age=debt?days(x.oldest):0;
+    return '<div class="swipe" data-pp="'+x.id+'"><div class="under"><span class="r">Заплатил всё</span><span class="l"><button data-prof>Профиль</button></span></div>'+
+      '<div class="face"><div class="debtor">'+avHTML(x.name)+'<div class="mid"><div class="nm">'+esc(x.name)+'</div>'+
+        '<div class="sm">'+(debt?x.items.length+' '+plural(x.items.length,'смена','смены','смен')+' · '+(age>7?'<span style="color:var(--debt)">'+age+' дн.</span>':'с '+dayText(x.oldest)):'рассчитан ✓')+
+        (pplSort==='brought'||!debt?' · за месяц '+m$(x.brought):'')+'</div></div>'+
+        '<div class="rt">'+(debt?'<div class="sum" style="color:var(--debt)">'+moneyHTML(x.debt)+'</div>':'<div class="sum t3" style="font-size:15px">'+(x.last?dayText(x.last):'—')+'</div>')+'</div></div>'+
+      (debt?'<div class="pdet'+(open?' open':'')+'"><div>'+x.items.map(it=>'<button class="kv" data-sh="'+it.s.id+'" style="width:100%"><span>'+dayLabel(it.s.work_date)+' · смена '+m$(it.s.total)+'</span><b>'+m$(it.due)+'</b></button>').join('')+
+        (locked?'':'<button class="btn" data-settle style="height:46px;margin-top:8px">Рассчитать '+esc(x.name)+'</button>')+'</div></div>':'')+
+      '</div></div>';
+  }).join('');
+}
+function bindPeople(sc){
+  sc.querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{ pplSort=b.dataset.sort; haptic('pick'); renderHist(); rise(sc); });
+  sc.querySelectorAll('[data-pp]').forEach(function(w){
+    const id=w.dataset.pp, x=()=>debts().find(d=>d.id===id);
+    const face=w.querySelector('.face');
+    face.onclick=e=>{
+      const sh=e.target.closest('[data-sh]'); if(sh){ shiftSheet(sh.dataset.sh); return; }
+      if(e.target.closest('[data-settle]')){ settleSheet(id); return; }
+      if(!x()){ profileSheet('c',id); return; }
+      haptic('tap'); pplOpen=pplOpen===id?null:id;
+      sc.querySelectorAll('.pdet').forEach(p=>p.classList.toggle('open',p.closest('[data-pp]').dataset.pp===pplOpen));
+    };
+    w.querySelector('[data-prof]').onclick=e=>{ e.stopPropagation(); w._close(); profileSheet('c',id); };
+    swipeable(w,{ right:(locked||!x())?null:()=>settleAll(id,w), left:true });
+  });
+}
+
 // потянул список вниз от верха — открылся поиск
 (function(){
   const sc=$('#scrHist'); let y0=null;
