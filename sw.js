@@ -1,6 +1,6 @@
 // Служебный воркер: держит оболочку приложения в кэше,
 // чтобы оно открывалось без интернета. Данные кэширует само приложение.
-const CACHE = 'uchet-v20';
+const CACHE = 'uchet-v21';
 const SHELL = [
   './',
   './index.html',
@@ -38,11 +38,13 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       fetch(req.url, { cache: 'no-cache' })
         .then((r) => {
-          const copy = r.clone();
-          caches.open(CACHE).then((c) => c.put('./index.html', copy));
+          // каждую страницу кладем под ее адресом: /next/ не должна подменять основной учет
+          const copy = r.clone(), key = new URL(req.url); key.search = '';
+          caches.open(CACHE).then((c) => c.put(key.href, copy));
           return r;
         })
-        .catch(() => caches.match('./index.html'))
+        .catch(() => { const key = new URL(req.url); key.search = '';
+          return caches.match(key.href).then((hit) => hit || caches.match('./index.html')); })
     );
     return;
   }

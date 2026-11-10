@@ -753,6 +753,7 @@
   <button class="btn sec" id="dlCsv">Скачать таблицу (.csv)</button>
   <button class="btn sec mt" id="dlJson">Скачать копию (.json)</button>
   <div class="note" id="dbNote"></div>
+  <button class="btn mt" id="tryNext">Новая версия — попробовать</button>
   <button class="btn sec mt" id="setClose">Готово</button>
 </div>
 
@@ -2463,6 +2464,8 @@ function csvText(){
   S.workers.forEach(w=>rows.push(['К выплате',w.name,'','','','','',(b.acc[w.id]||0)-(b.paid[w.id]||0)]));
   return '\ufeff'+rows.map(r=>r.map(q).join(';')).join('\r\n');
 }
+// новая версия учета — та же база; адрес с данными Telegram сохраняем
+document.getElementById('tryNext').onclick=()=>{ location.href='next/'+location.hash; };
 document.getElementById('dlCsv').onclick=()=>download('uchet-'+today()+'.csv',csvText(),'text/csv');
 document.getElementById('dlJson').onclick=()=>download('uchet-'+today()+'.json',
   JSON.stringify({app:'uchet',savedAt:new Date().toISOString(),data:S},null,2),'application/json');
@@ -3093,7 +3096,7 @@ async function liveSave(id,btn){
 // GitHub Pages разрешает телефону держать страницу в кэше до 10 минут, а Telegram на iPhone
 // сервис-воркер не запускает. Поэтому сами спрашиваем, не вышла ли версия новее, и перезагружаемся.
 // При каждой выкладке APP_VERSION меняется.
-const APP_VERSION='2026-11-10.1';
+const APP_VERSION='2026-11-11.1';
 async function checkUpdate(){
   try{
     const r=await fetch('index.html?nc='+Date.now(),{cache:'no-store'});
