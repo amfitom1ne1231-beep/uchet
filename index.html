@@ -125,7 +125,7 @@ body.ro #plus{opacity:.25;pointer-events:none}
 .note{font-size:13px;color:var(--t3);margin:8px 4px 0;line-height:1.45}
 
 /* ======================= СЕЙЧАС: идёт смена ======================= */
-.carousel{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;margin:0 -16px;padding:0 16px}
+.carousel{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:12px;margin:-32px -16px;padding:32px 16px}   /* запас сверху и снизу — под свечение карточки */
 .carousel::-webkit-scrollbar{display:none}
 .lcard{flex:0 0 100%;scroll-snap-align:center;scroll-snap-stop:always}
 .dots{display:flex;justify-content:center;gap:6px;margin:10px 0 0}
@@ -150,7 +150,7 @@ body.ro #plus{opacity:.25;pointer-events:none}
 .pausebtn:active{transform:scale(.9)}
 .lcard.paused .pausebtn{width:200px;border-radius:36px;background:#fff;color:#000;font-weight:600;gap:8px;display:flex;align-items:center;justify-content:center}
 /* строка людей прокручивается вбок, а значит обрезает всё, что выходит за её края; запас по краям — чтобы свечение выбранного кружка не резалось рамкой */
-.people{display:flex;gap:14px;overflow-x:auto;padding:26px 20px 6px;margin:-22px -18px -4px;scroll-padding:0 20px}
+.people{display:flex;gap:14px;overflow-x:auto;padding:26px 24px 6px;margin:-22px -18px -4px;scroll-padding:0 24px}
 .people::-webkit-scrollbar{display:none}
 .pp{display:flex;flex-direction:column;align-items:center;gap:6px;flex:0 0 auto;width:52px;transition:opacity .3s}
 .pp .av{width:52px;height:52px;flex-basis:52px;font-size:16px;transition:transform .35s var(--spring),box-shadow .3s,background .3s}
@@ -341,9 +341,10 @@ body.sheeted #scrim{opacity:1;pointer-events:auto;transition-duration:var(--open
 #undo button{font-weight:600;color:var(--debt);font-size:15px;display:flex;align-items:center;gap:8px}
 #undo svg{transform:rotate(-90deg)}
 #undo .rg{stroke:var(--debt);transition:stroke-dashoffset linear}
-#toast{position:fixed;z-index:80;left:50%;top:calc(var(--st) + 12px);transform:translate(-50%,-150%);max-width:calc(100% - 32px);
-  padding:11px 16px;border-radius:16px;font-size:14.5px;text-align:center;transition:transform .45s var(--spring)}
-#toast.on{transform:translate(-50%,0)}
+/* спрятанная подсказка уходит за верх экрана целиком (с запасом на вырез камеры) и гаснет — иначе её край торчит из-под Dynamic Island */
+#toast{position:fixed;z-index:80;left:50%;top:calc(var(--st) + 12px);transform:translate(-50%,calc(-100% - var(--st) - 24px));max-width:calc(100% - 32px);
+  padding:11px 16px;border-radius:16px;font-size:14.5px;text-align:center;opacity:0;pointer-events:none;transition:transform .45s var(--spring),opacity .25s}
+#toast.on{transform:translate(-50%,0);opacity:1;pointer-events:auto}
 #toast.err{box-shadow:inset 0 0 0 1px rgba(255,69,58,.5)}
 #offbar{position:fixed;z-index:25;left:24px;right:24px;bottom:calc(var(--sb) + var(--navh) + 22px);text-align:center;font-size:12.5px;
   color:var(--t2);padding:7px 12px;border-radius:14px;display:none}
@@ -643,7 +644,7 @@ html,body{background:#000}
 .hsticky .segbig{margin:0 0 8px}
 .hfil .segmini{margin-bottom:8px}
 .hfil .segmini button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
-.fchips{display:flex;align-items:center;gap:7px;overflow-x:auto;margin:0 -16px;padding:1px 16px}.fchips::-webkit-scrollbar{display:none}
+.fchips{display:flex;align-items:center;gap:7px;overflow-x:auto;margin:-8px -16px;padding:9px 16px}.fchips::-webkit-scrollbar{display:none}
 .fchips .pill{height:32px;flex:0 0 auto;background:rgba(255,255,255,.08)}
 .fchips .pill[aria-pressed="true"]{background:#fff;color:#000}
 .fchips .srch{flex:0 0 32px;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.08);color:var(--t2)}
@@ -651,7 +652,7 @@ html,body{background:#000}
   background:color-mix(in srgb,var(--pc) 24%,#141416);color:color-mix(in srgb,var(--pc) 80%,#fff);box-shadow:inset 0 0 0 .6px color-mix(in srgb,var(--pc) 35%,transparent);
   transition:transform .3s var(--spring),box-shadow .3s,background .3s}
 .fav:active{transform:scale(.88)}
-.fav.on{background:var(--pc);color:#0a0a0a;box-shadow:0 0 0 2px #000,0 0 0 3.5px var(--pc),0 0 14px -2px var(--pc)}
+.fav.on{background:var(--pc);color:#0a0a0a;box-shadow:0 0 0 2px #000,0 0 0 3.5px var(--pc),0 0 9px 0 color-mix(in srgb,var(--pc) 70%,transparent)}
 .hsum{margin-top:14px;padding:16px 18px;border-radius:22px}
 .hst{display:flex;align-items:center;justify-content:space-between;font-size:14px;color:var(--t2);font-weight:500}
 .hst .pill{height:30px;font-size:13px;background:rgba(255,255,255,.1);position:relative;z-index:1}
@@ -777,9 +778,9 @@ html,body{background:#000}
 <div id="done"><div class="glass"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>
 <div id="gate"></div>
 
-<script>const APP_VERSION='2026-11-15.2';</script>
+<script>const APP_VERSION='2026-11-15.3';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-<script src="core.js?v=2026-11-15.2"></script>
-<script src="app.js?v=2026-11-15.2"></script>
+<script src="core.js?v=2026-11-15.3"></script>
+<script src="app.js?v=2026-11-15.3"></script>
 </body>
 </html>
