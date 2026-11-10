@@ -260,14 +260,16 @@ const shiftEndMs=s=>s.ended_at ? Date.parse(s.ended_at) : shiftStart(s)+(s.hours
 const byOld=(a,b)=> (a.work_date<b.work_date?-1:a.work_date>b.work_date?1:0) ||
   String(hhmm(a.start_time)||'').localeCompare(String(hhmm(b.start_time)||'')) || String(a.created_at||'').localeCompare(String(b.created_at||''));
 // долги по кастомерам: [{id, total, items:[{s, l, due}], oldest}] — самые большие сверху
+// неотправленные смены тоже в долгах (с пометкой), но рассчитать по ним можно только после отправки
 function debts(){
   const by={};
-  S.shifts.filter(s=>!s.pending).sort(byOld).forEach(s=>(s.custLinks||[]).forEach(function(l){
+  S.shifts.slice().sort(byOld).forEach(s=>(s.custLinks||[]).forEach(function(l){
     const d=due(l); if(d<=0.004) return;
-    const x=by[l.id]||(by[l.id]={id:l.id,total:0,items:[],oldest:s.work_date});
-    x.total+=d; x.items.push({s:s,l:l,due:d});
+    const x=by[l.id]||(by[l.id]={id:l.id,total:0,payable:0,pend:0,items:[],oldest:s.work_date});
+    x.total+=d; if(s.pending) x.pend+=d; else x.payable+=d; x.items.push({s:s,l:l,due:d,pending:!!s.pending});
   }));
-  return Object.values(by).map(x=>Object.assign(x,{total:Math.round(x.total*100)/100})).sort((a,b)=>b.total-a.total);
+  const r=v=>Math.round(v*100)/100;
+  return Object.values(by).map(x=>Object.assign(x,{total:r(x.total),payable:r(x.payable),pend:r(x.pend),pendingOnly:x.payable<=0.004})).sort((a,b)=>b.total-a.total);
 }
 // посиделки человека: когда сидел/работал (его отрезки, без пауз), сколько это стоило, сколько должен
 function personSessions(kind,id){
@@ -295,7 +297,7 @@ function addSplit(acc,x){ acc.kassa+=x.kassa; Object.keys(x.w).forEach(k=>acc.w[
 function allocPreview(cid,amount,onlyShift){
   let left=Math.round(amount*100)/100; const items=[], split={kassa:0,w:{}};
   const d=debts().find(x=>x.id===cid);
-  (d?d.items:[]).filter(it=>!onlyShift||it.s.id===onlyShift).forEach(function(it){
+  (d?d.items:[]).filter(it=>!it.pending&&(!onlyShift||it.s.id===onlyShift)).forEach(function(it){
     if(left<=0.004) return;
     const take=Math.min(left,it.due);
     items.push({s:it.s,due:it.due,take:take,rest:Math.round((it.due-take)*100)/100});
@@ -407,7 +409,7 @@ const draftFromLive=l=>{
   return { mode:'live', liveId:l.id, start:Date.parse(l.started_at), end:end,
     pauses:livePauseSpans(l,end), discount:Number(l.discount)||0, note:l.note||'',
     workers:liveWorkerSpans(l,end).map(x=>({id:x.id,spans:x.spans})),
-    customers:livePlayerSpans(l,end).map(x=>({id:x.id,spans:x.spans,paid:0})),
+    customers:livePlayerSpans(l,end).map(x=>({id:x.id,spans:x.spans,paid:null})),
     payer:l.payer_id||null };
 };
 function draftFromShift(s){
@@ -487,15 +489,17 @@ async function fetchAll(){
   if(canWrite){
     const t0=Date.now();
     sb.rpc('live_now').then(r=>{ if(r.data) syncClock(r.data,t0,Date.now()); }).catch(function(){});
+    // база отдаёт не больше 1000 строк за раз — берём страницами, чтобы ничего не терялось
+    const all=async mk=>{ let out=[]; for(let from=0;;from+=1000){ const r=await mk().range(from,from+999); if(r.error) return r; out=out.concat(r.data||[]); if(!r.data||r.data.length<1000) return {data:out}; } };
     const q=[
-      sb.from('workers').select('*').order('created_at'),
-      sb.from('customers').select('*').order('created_at'),
-      sb.from('shifts').select('*').order('work_date',{ascending:false}).order('created_at',{ascending:false}),
-      sb.from('shift_workers').select('*'),
-      sb.from('shift_customers').select('*'),
-      sb.from('ops').select('*').order('op_date',{ascending:false}),
+      all(()=>sb.from('workers').select('*').order('created_at')),
+      all(()=>sb.from('customers').select('*').order('created_at')),
+      all(()=>sb.from('shifts').select('*').order('work_date',{ascending:false}).order('created_at',{ascending:false}).order('id')),
+      all(()=>sb.from('shift_workers').select('*').order('shift_id').order('worker_id')),
+      all(()=>sb.from('shift_customers').select('*').order('shift_id').order('customer_id')),
+      all(()=>sb.from('ops').select('*').order('op_date',{ascending:false}).order('id')),
       sb.from('live_shifts').select('*').order('started_at'),
-      sb.from('payments').select('*').order('created_at',{ascending:false}).limit(500)
+      all(()=>sb.from('payments').select('*').order('created_at',{ascending:false}).order('id'))
     ];
     const r=await Promise.all(q);
     const err=r.slice(0,7).find(x=>x.error);
@@ -509,6 +513,8 @@ async function fetchAll(){
   if(data && data.now) syncClock(data.now,t0,Date.now());
   if(!data || data.status==='error') throw new Error((data&&data.error)||'tg-access');
   if(!data.ok) throw gateErr(data);
+  // правку дали, но вход для неё не создался — сказать, а не молча оставить «только просмотр»
+  if(data.can_edit && !data.session && !window.__editWarned){ window.__editWarned=true; setTimeout(()=>typeof toast==='function'&&toast('Правка не включилась — закрой учёт и открой заново',true),1500); }
   // владелец дал правку — входим под учеткой этого Telegram и читаем базу напрямую
   if(data.session){
     try{ await sb.auth.setSession(data.session); await refreshAuth(); }catch(_){}

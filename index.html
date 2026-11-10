@@ -336,7 +336,7 @@ body.sheeted #scrim{opacity:1;pointer-events:auto;transition-duration:var(--open
   padding:11px 16px;border-radius:16px;font-size:14.5px;text-align:center;transition:transform .45s var(--spring)}
 #toast.on{transform:translate(-50%,0)}
 #toast.err{box-shadow:inset 0 0 0 1px rgba(255,69,58,.5)}
-#offbar{position:fixed;z-index:25;left:24px;right:24px;top:calc(var(--st) + 60px);text-align:center;font-size:12.5px;
+#offbar{position:fixed;z-index:25;left:24px;right:24px;bottom:calc(var(--sb) + var(--navh) + 22px);text-align:center;font-size:12.5px;
   color:var(--t2);padding:7px 12px;border-radius:14px;display:none}
 #offbar.on{display:block}
 #done{position:fixed;z-index:90;inset:0;display:grid;place-items:center;pointer-events:none;opacity:0;transition:opacity .25s}
@@ -685,10 +685,54 @@ html,body{background:#000}
 .kv.pay+.kv.pay{border-top:.5px solid var(--line)}
 .kv.pay span{flex:1;display:flex;flex-direction:column}.kv.pay em{font-style:normal;font-size:12px;color:var(--t2)}
 .sheet.morph{transition:none}
+
+/* ======================= «+» И ДОК ======================= */
+#plus{position:relative}
+#plus svg{transition:transform .4s var(--spring),opacity .2s}
+#plus .ic-p{display:none}
+#plus.live .ic-plus{display:none}#plus.live .ic-p{display:block}
+#plus.open .ic-plus{display:block;transform:rotate(45deg)}#plus.open .ic-p{display:none}
+#plus.held{transform:scale(.9)}
+#plus.live:before{content:'';position:absolute;inset:-5px;border-radius:50%;box-shadow:0 0 0 2px var(--live),0 0 18px rgba(255,69,58,.55);animation:breathe 3.2s ease-in-out infinite;pointer-events:none}
+@keyframes breathe{0%,100%{opacity:.45;transform:scale(1)}50%{opacity:1;transform:scale(1.06)}}
+#nav .nt{position:relative}
+#nav .nt.warn:after{content:'';position:absolute;top:0;left:calc(50% + 8px);width:8px;height:8px;border-radius:50%;background:var(--debt);box-shadow:0 0 0 2px #000,0 0 8px var(--debt)}
+#fan{position:fixed;inset:0;z-index:35;pointer-events:none;background:radial-gradient(circle at 50% 100%,rgba(0,0,0,.55),transparent 70%);opacity:0;transition:opacity .2s}
+#fan.on{opacity:1}
+#fan .fi{position:absolute;transform:translate(-50%,-50%) scale(.3);opacity:0;display:flex;flex-direction:column;align-items:center;gap:6px;
+  transition:transform .38s var(--spring) var(--d),opacity .2s var(--d)}
+#fan.on .fi{transform:translate(-50%,-50%) scale(1);opacity:1}
+#fan .fi i{font-style:normal;width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-size:21px;font-weight:600;
+  background:rgba(40,40,46,.85);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);box-shadow:inset 0 .5px 0 rgba(255,255,255,.2),0 8px 24px rgba(0,0,0,.5);transition:transform .25s var(--spring),background .2s,color .2s}
+#fan .fi span{font-size:12px;font-weight:600;white-space:nowrap;color:var(--t2);transition:color .2s}
+#fan .fi.hot i{background:#fff;color:#000;transform:scale(1.18)}
+#fan .fi.hot span{color:#fff}
+.pp .tm.nm1{color:var(--t1);width:60px;margin:0 -4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.timepair.three button{padding:10px}
+.timepair.three b{font-size:18px}
+.timepair b em{font-style:normal;font-size:11px;color:var(--debt);vertical-align:6px}
+.swipe.rsw{border-radius:12px;background:transparent!important;margin:0 -14px;box-shadow:none!important}
+.rsw .face{padding:0 14px;background:rgba(26,26,30,.98)}
+.rsw+.rsw .face{box-shadow:inset 0 .5px 0 var(--line)}
+.rsw .under{padding:0 10px}
+.rsw .under .l button{height:38px}
+.seg.unset{box-shadow:inset 0 0 0 1px rgba(217,164,65,.55);border-radius:10px}
+.slider.off{opacity:.45;pointer-events:none}
+.pp .pn{font-size:11.5px;color:var(--t1);width:62px;margin:0 -5px -4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+/* кнопки меньше 44 px — невидимые поля вокруг, чтобы пальцу было куда попасть */
+.fchips .srch,.fav,.lh .x,.hst .pill{position:relative}
+.fchips .srch:after,.fav:after,.lh .x:after,.hst .pill:after{content:'';position:absolute;inset:-6px}
+.crow .a{min-height:44px}
+.p1{font-style:normal;font-size:10.5px;color:var(--debt);margin-left:3px;vertical-align:5px}
+.mates{display:flex;gap:8px;overflow-x:auto;padding:2px 0}.mates::-webkit-scrollbar{display:none}
+.mate{display:flex;align-items:center;gap:8px;flex:0 0 auto;padding:6px 12px 6px 6px;border-radius:22px;background:rgba(255,255,255,.07);font-size:14px}
+.mate em{font-style:normal;font-size:12px;color:var(--t2)}
 @media (prefers-reduced-motion:reduce){
   #bg .l,.sheen:after,.tone-live{animation:none!important}
   *,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important}
-  .screen,.level,.sheet,#app,#undo,#toast,.mdet,.search,#nav{transition:opacity .2s!important;transform:none!important}
+  .screen,.level,.sheet,#app,#undo,.mdet,.search{transition:opacity .2s!important;transform:none!important}
+  #toast{transition:opacity .2s!important;transform:translate(-50%,0)!important;opacity:0}#toast.on{opacity:1}
+  #nav{transition:none!important}#fan .fi{transition:opacity .15s!important}
   .screen.off-l,.screen.off-r,.level.under,.level.enter{opacity:0}
   .sheet{opacity:0} body.sheeted .sheet.top{opacity:1}
 }
@@ -709,7 +753,7 @@ html,body{background:#000}
   <button class="nt" data-tab="now" aria-selected="true">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle class="rg" cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
     <span>Сейчас</span></button>
-  <button id="plus" aria-label="Новая смена"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+  <button id="plus" aria-label="Новая смена"><svg class="ic-plus" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><svg class="ic-p" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.5" cy="8" r="3.5"/><path d="M3 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M19 8v6M16 11h6"/></svg></button>
   <button class="nt" data-tab="hist" aria-selected="false">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r=".8" fill="currentColor"/><circle cx="4" cy="12" r=".8" fill="currentColor"/><circle cx="4" cy="18" r=".8" fill="currentColor"/></svg>
     <span>История</span></button>
@@ -724,9 +768,9 @@ html,body{background:#000}
 <div id="done"><div class="glass"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>
 <div id="gate"></div>
 
-<script>const APP_VERSION='2026-11-13.2';</script>
+<script>const APP_VERSION='2026-11-14.1';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-<script src="core.js?v=2026-11-13.2"></script>
-<script src="app.js?v=2026-11-13.2"></script>
+<script src="core.js?v=2026-11-14.1"></script>
+<script src="app.js?v=2026-11-14.1"></script>
 </body>
 </html>
