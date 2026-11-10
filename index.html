@@ -698,6 +698,7 @@
   <div class="grab"></div>
   <h2 id="opTitle">Выплата</h2>
   <div class="lead" id="opLead"></div>
+  <div class="note" id="opWhy" style="margin:-4px 0 14px;line-height:1.5"></div>
   <span class="cap" style="margin-top:0" id="opAmtCap">Сумма</span>
   <input type="text" id="opAmt" inputmode="decimal" placeholder="0">
   <div class="quick" id="opQuick"></div>
@@ -1643,6 +1644,16 @@ function workersLine(res,even){
 }
 
 /* ======================= ИТОГИ ======================= */
+// какая доля денег смены еще не роздана: 1 — смена без кастомеров, 0 — игроки все заплатили
+// (оплата игрока = его деньги уже раздали кассе и операторам на месте)
+function openShare(s){
+  const links=s.custLinks||[];
+  if(!links.length) return 1;
+  let total=0, unpaid=0;
+  links.forEach(l=>{ const amt=l.amount!=null?l.amount:s.per_customer; total+=amt; if(!l.paid) unpaid+=amt; });
+  return total>0 ? unpaid/total : 0;
+}
+const workerShare=(s,id)=>{ const wl=(s.workerLinks||[]).find(x=>x.id===id); return wl&&wl.share!=null?wl.share:s.per_worker; };
 function balances(){
   let inK=0,outK=0; const acc={},paid={},debt={},earned={};
   S.workers.forEach(w=>{acc[w.id]=0;paid[w.id]=0;});
@@ -1651,20 +1662,15 @@ function balances(){
     const links=s.custLinks||[];
     // деньги раздаются в момент оплаты: касса своё забрала, работники своё.
     // Висит только то, за что игроки ещё не рассчитались.
-    let openShare=1;
-    if(links.length){
-      let total=0, unpaid=0;
-      links.forEach(function(l){
-        const amt=l.amount!=null?l.amount:s.per_customer;
-        total+=amt;
-        if(l.paid) handed+=amt; else { unpaid+=amt; debt[l.id]=(debt[l.id]||0)+amt; }
-      });
-      openShare = total>0 ? unpaid/total : 0;
-    }
-    inK += s.kassa * openShare;
+    links.forEach(function(l){
+      const amt=l.amount!=null?l.amount:s.per_customer;
+      if(l.paid) handed+=amt; else debt[l.id]=(debt[l.id]||0)+amt;
+    });
+    const op=openShare(s);
+    inK += s.kassa * op;
     s.workerIds.forEach(id=>{
-      const wl=(s.workerLinks||[]).find(x=>x.id===id), mine=wl&&wl.share!=null?wl.share:s.per_worker;
-      acc[id]=(acc[id]||0)+mine*openShare;
+      const mine=workerShare(s,id);
+      acc[id]=(acc[id]||0)+mine*op;
       earned[id]=(earned[id]||0)+mine;
     });
   });
@@ -2285,6 +2291,19 @@ function openOp(kind,workerId){
     : inc ? 'Должны сейчас операторам '+money(due)+' и столько же кассе. Кто за кого платил — не важно.'
     : 'В кассе к передаче: '+money(b.kassa);
   document.getElementById('opAmtCap').textContent = inc ? 'Операторам — как в заметках' : 'Сумма';
+  opCtx.due=due;
+  // за что выдаем: смены, деньги которых еще не розданы. Оплаченные игроками — уже розданы на месте
+  let why='';
+  if(!inc){
+    const open=S.shifts.filter(s=>!s.pending && openShare(s)>0.0005 && (kind!=='payout'||s.workerIds.indexOf(workerId)>=0))
+      .slice(0,6).map(s=>{
+        const op=openShare(s), part=(kind==='payout'?workerShare(s,workerId):s.kassa)*op, p=String(s.work_date).split('-');
+        return Number(p[2])+' '+MON[Number(p[1])-1]+' — '+money(part)+' · '+((s.custLinks||[]).length?'игроки не заплатили':'без кастомеров');
+      });
+    why=(open.length?'Не роздано по сменам:<br>'+open.map(esc).join('<br>')+'<br>':'')+
+      'Смены, которые игроки уже оплатили, считаются розданными — за них выдавать не нужно.';
+  }
+  document.getElementById('opWhy').innerHTML=why;
   document.getElementById('opNote').placeholder = inc ? 'Кто передал, необязательно' : 'Кому отдал, необязательно';
   document.getElementById('opAmt').value='';
   document.getElementById('opNote').value='';
@@ -2313,6 +2332,9 @@ document.getElementById('opSave').onclick=async function(){
 async function saveOp(){
   const amt=parseAmt(document.getElementById('opAmt').value);
   if(!amt||amt<=0){ toast('Введи сумму'); return; }
+  // больше, чем к выдаче, — скорее всего, за смену, которую игроки уже оплатили
+  if(opCtx.kind!=='income' && amt>Math.max(0,opCtx.due||0)+0.005 &&
+     !await ask('Это больше, чем к выдаче сейчас ('+money(Math.max(0,opCtx.due||0))+'). Деньги за смены, которые игроки уже оплатили, считаются розданными — второй раз их выдавать не нужно.\n\nВсё равно записать '+money(amt)+'?')) return;
   const opRow={
     kind:opCtx.kind, worker_id:opCtx.workerId||null, amount:opCtx.kind==='income'?amt*2:amt,
     op_date:document.getElementById('opDate').value||today(),
@@ -3071,7 +3093,7 @@ async function liveSave(id,btn){
 // GitHub Pages разрешает телефону держать страницу в кэше до 10 минут, а Telegram на iPhone
 // сервис-воркер не запускает. Поэтому сами спрашиваем, не вышла ли версия новее, и перезагружаемся.
 // При каждой выкладке APP_VERSION меняется.
-const APP_VERSION='2026-10-28.2';
+const APP_VERSION='2026-11-10.1';
 async function checkUpdate(){
   try{
     const r=await fetch('index.html?nc='+Date.now(),{cache:'no-store'});
