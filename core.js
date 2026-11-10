@@ -269,6 +269,19 @@ function debts(){
   }));
   return Object.values(by).map(x=>Object.assign(x,{total:Math.round(x.total*100)/100})).sort((a,b)=>b.total-a.total);
 }
+// посиделки человека: когда сидел/работал (его отрезки, без пауз), сколько это стоило, сколько должен
+function personSessions(kind,id){
+  return S.shifts.filter(s=>(kind==='c'?s.customerIds:s.workerIds).includes(id)).map(function(s){
+    const a=shiftStart(s), b=shiftEndMs(s), pz=pauseSpans(s.pause_log).filter(p=>p.e);
+    const link=kind==='c'?(s.custLinks||[]).find(l=>l.id===id):(s.workerLinks||[]).find(l=>l.id===id);
+    let sp=pauseSpans(link&&link.spans).filter(p=>p.e).map(p=>({s:p.s,e:p.e}));
+    if(!sp.length) sp=[{s:a,e:b}];
+    sp=spanCut(sp,a,b); if(!sp.length) sp=[{s:a,e:b}];
+    return {s:s, spans:sp, ms:spanLen(spanMinus(sp,pz)),
+      amount:kind==='c'?(link?(link.share!=null?link.share:link.amount):0):(Number(workerShare(s,id))||0),
+      due:kind==='c'&&link?due(link):0};
+  }).sort((x,y)=>(y.s.work_date>x.s.work_date?1:y.s.work_date<x.s.work_date?-1:0)||(y.spans[0].s-x.spans[0].s));
+}
 // раскладка денег: кусок оплаты по смене делится так же, как сама смена — касса и операторы
 function chunkSplit(s,chunk){
   const T=Number(s.total)||0, out={kassa:0, w:{}};

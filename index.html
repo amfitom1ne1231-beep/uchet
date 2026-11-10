@@ -486,6 +486,73 @@ body.sheeted #scrim{opacity:1;pointer-events:auto;transition-duration:var(--open
 .pdet.open>div{padding:0 16px 14px}
 .pdet .kv{border-top:.5px solid var(--line)}
 .pdet .kv b{color:var(--debt)}
+
+/* шторка «Учёт» во время смены */
+#drawer{--peekpx:calc(var(--navh) + var(--sb) + 96px);position:fixed;z-index:28;left:0;right:0;bottom:0;height:calc(100% - var(--st) - 70px);
+  border-radius:24px 24px 0 0;display:flex;flex-direction:column;transform:translateY(100%);transition:transform .45s var(--spring);
+  box-shadow:inset 0 .5px 0 rgba(255,255,255,.16),0 -12px 40px rgba(0,0,0,.55)}
+#drawer.show{transform:translateY(calc(100% - var(--navh) - var(--sb) - 96px))}
+#drawer.show.up{transform:translateY(0)}
+#drawer.drag{transition:none}
+#drawer .dgrab{height:20px;display:grid;place-items:center;touch-action:none;flex:0 0 auto}
+#drawer .dgrab:before{content:'';width:38px;height:5px;border-radius:3px;background:rgba(255,255,255,.28)}
+#drawer .dhead{display:flex;align-items:center;gap:10px;padding:0 18px 12px;touch-action:none;cursor:pointer;flex:0 0 auto}
+#drawer .dt{font-size:20px;font-weight:700}
+#drawer .dchips{flex:1;display:flex;gap:6px;overflow:hidden}
+#drawer .dchips span{font-size:12.5px;font-weight:600;padding:5px 9px;border-radius:10px;background:rgba(255,255,255,.08);white-space:nowrap}
+#drawer .dchips span.w{color:var(--debt);background:rgba(217,164,65,.14)} #drawer .dchips span.ok{color:var(--ok);background:rgba(78,166,114,.13)}
+#drawer .dchev{color:var(--t2);transition:transform .45s var(--spring)}
+#drawer.up .dchev{transform:rotate(180deg)}
+#drawer .dbody{flex:1;overflow-y:auto;padding:0 16px calc(var(--navh) + var(--sb) + 40px);opacity:.0;transition:opacity .3s}
+#drawer.up .dbody{opacity:1}
+#drawer .dbody::-webkit-scrollbar{display:none}
+#drawer .dbody .hero .v{font-size:40px}
+body.drawered #app{transform:scale(.95) translateY(calc(var(--st) + 6px));border-radius:18px;filter:brightness(.55);transition-duration:var(--open)}
+#scrNow.withdrawer{padding-bottom:calc(var(--navh) + var(--sb) + 150px)}
+/* капля на нижней панели */
+#nav .ind{position:absolute;left:0;top:50%;width:96px;height:46px;margin-top:-23px;border-radius:23px;background:rgba(255,255,255,.09);pointer-events:none;transition:opacity .3s}
+#nav.slim .ind{opacity:0}
+#nav .nt{position:relative;z-index:1}
+/* часы барабаном */
+.clock .dg{display:inline-block;min-width:.56em;text-align:center}.clock .dg.sep{min-width:0;padding:0 .02em}
+.clock .dg.roll{animation:roll .42s var(--spring)}
+@keyframes roll{from{transform:translateY(55%);opacity:0;filter:blur(1px)}to{transform:none;opacity:1;filter:none}}
+/* сменился → */
+.people .swap{align-self:center;margin:0 -8px 18px;color:var(--t2);font-size:16px}
+/* свежие цифры подтягиваются */
+body.refreshing .hero .v,body.refreshing .week .tot,body.refreshing #drawer .dchips{animation:pulse 1.1s ease-in-out infinite}
+/* новый долг вспыхивает */
+.swipe.fresh{animation:freshin .9s var(--spring) both}
+.swipe.fresh .face{animation:freshglow 2.2s ease-out both}
+@keyframes freshin{from{transform:translateY(-14px) scale(.96);opacity:0}to{transform:none;opacity:1}}
+@keyframes freshglow{0%{box-shadow:inset 0 0 0 1.5px rgba(217,164,65,.9),0 0 24px rgba(217,164,65,.35)}100%{box-shadow:inset 0 0 0 1.5px rgba(217,164,65,0),0 0 0 rgba(0,0,0,0)}}
+/* «Люди»: период, активность за 14 дней */
+.segmini{display:flex;gap:4px;background:var(--card);border-radius:12px;padding:3px}
+.segmini button{flex:1;height:32px;border-radius:9px;font-size:13.5px;font-weight:600;color:var(--t2);transition:background .3s,color .3s}
+.segmini button[aria-pressed="true"]{background:rgba(255,255,255,.14);color:var(--t1)}
+.strip{display:flex;align-items:flex-end;gap:2px;height:14px;margin-top:7px;max-width:150px}
+.strip i{flex:1;height:var(--h);min-height:2px;border-radius:1.5px;background:rgba(255,255,255,.55)}
+.strip i[style*="--h:0%"]{background:rgba(255,255,255,.1)}
+.strip i.td{background:#fff;box-shadow:0 0 6px rgba(255,255,255,.6)}
+/* профиль */
+.av.xl{width:64px;height:64px;flex-basis:64px;font-size:22px}
+.phead{display:flex;align-items:center;gap:14px;margin-top:4px}
+.pdebt{font-size:20px;margin-top:4px}.pdebt b{color:var(--debt);font-weight:500}.pdebt.ok{color:var(--ok);font-size:16px}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.tile{background:var(--card2);border-radius:14px;padding:10px 6px;text-align:center}
+.tile b{display:block;font-size:17px;font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tile span{font-size:11px;color:var(--t2)} .tile.warn b{color:var(--debt)}
+.calhead{display:flex;align-items:center;justify-content:space-between;margin:20px 4px 8px}
+.calhead b{font-size:17px}.calhead button{width:36px;height:36px;border-radius:50%;background:var(--card2);font-size:18px}.calhead button:disabled{opacity:.3}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.cal .wd{font-size:11px;color:var(--t3);text-align:center;padding-bottom:2px}
+.cal .cd{aspect-ratio:1;border-radius:10px;background:rgba(255,255,255,.04);font-size:13px;color:var(--t2);position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+.cal .cd.on{background:rgba(255,255,255,calc(var(--a) * .55));color:#fff;font-weight:600}
+.cal .cd.on em{font-style:normal;font-size:9.5px;font-weight:500;opacity:.85}
+.cal .cd.td{box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.7)}
+.cal .cd.sel{box-shadow:inset 0 0 0 2px var(--debt)}
+.row.sess .sd{width:40px;flex:0 0 40px;text-align:center}.row.sess .sd b{display:block;font-size:20px;font-weight:300;line-height:1}.row.sess .sd span{font-size:11px;color:var(--t2)}
+.row.sess .nm{font-size:15px}
 @media (prefers-reduced-motion:reduce){
   *,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important}
   .screen,.level,.sheet,#app,#undo,#toast,.mdet,.search,#nav{transition:opacity .2s!important;transform:none!important}
@@ -503,7 +570,8 @@ body.sheeted #scrim{opacity:1;pointer-events:auto;transition-duration:var(--open
 <button id="gear" class="glass" aria-label="Настройки">
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
 </button>
-<nav id="nav" class="glass">
+<div id="drawer" class="glass"><div class="dgrab"></div><div class="dhead"></div><div class="dbody"></div></div>
+<nav id="nav" class="glass"><i class="ind"></i>
   <button class="nt" data-tab="now" aria-selected="true">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle class="rg" cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
     <span>Сейчас</span></button>
@@ -522,9 +590,9 @@ body.sheeted #scrim{opacity:1;pointer-events:auto;transition-duration:var(--open
 <div id="done"><div class="glass"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>
 <div id="gate"></div>
 
-<script>const APP_VERSION='2026-11-12.7';</script>
+<script>const APP_VERSION='2026-11-12.8';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-<script src="core.js?v=2026-11-12.7"></script>
-<script src="app.js?v=2026-11-12.7"></script>
+<script src="core.js?v=2026-11-12.8"></script>
+<script src="app.js?v=2026-11-12.8"></script>
 </body>
 </html>
