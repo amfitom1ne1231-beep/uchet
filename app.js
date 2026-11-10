@@ -17,7 +17,6 @@ function initials(name){
   if(w.length>1) return (w[0][0]+w[1][0]).toUpperCase();
   const x=w[0]||'?'; return x[0].toUpperCase()+(x[1]||'').toLowerCase();
 }
-const avHTML=(name,cls)=>'<div class="av '+(cls||'')+'">'+esc(initials(name))+'</div>';
 const WD=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
 const MONFULL=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONGEN=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
@@ -34,6 +33,106 @@ const freq=(kind)=>{   // кого чаще звали в последние 60 
   S.shifts.filter(s=>s.work_date>=from).forEach(s=>(kind==='w'?s.workerIds:s.customerIds).forEach(id=>n[id]=(n[id]||0)+1));
   return (kind==='w'?S.workers:S.customers).filter(x=>x.active!==false).slice().sort((a,b)=>(n[b.id]||0)-(n[a.id]||0)||String(a.name).localeCompare(b.name));
 };
+
+/* ======================= ЖИВОЙ ФОН ======================= */
+// Под всеми экранами — переливающийся фон. Цвет рассказывает о состоянии раньше цифр:
+// идёт смена — красный пульс, есть долги — янтарь, все рассчитаны — спокойный зелёно-синий.
+// Ночью глубже и прохладнее, днём теплее; на «Сейчас» теплеет от заработанного за день.
+// Двигаются только слои (transform/opacity): учёт свернут — фон стоит, «Уменьшить движение» — неподвижен.
+const BG={live:'#ff3b30',live2:'#ff7a45',debt:'#d9a441',debt2:'#9a5d1e',calm:'#2f8f6a',calm2:'#1f5f8b',night:'#2a2f6b',warm:'#ffb35c'};
+function todaySum(){ const t=today(); return S.shifts.filter(s=>s.work_date===t).reduce((a,s)=>a+(Number(s.total)||0),0); }
+function updateBg(){
+  const bg=$('#bg'); if(!bg) return;
+  const live=(S.live||[]).some(l=>!l.finished_at), debt=debts().length>0, h=Number(khParts(nowMs()).t.slice(0,2)), night=h>=23||h<6;
+  const c1=live?BG.live:debt?BG.debt:BG.calm, c2=live?(debt?BG.debt:BG.live2):debt?BG.debt2:BG.calm2, c3=night?BG.night:(debt&&live?BG.debt2:BG.calm2);
+  bg.style.setProperty('--c1',c1); bg.style.setProperty('--c2',c2); bg.style.setProperty('--c3',c3);
+  const warm=Math.min(1,todaySum()/1500);
+  bg.style.setProperty('--warm',(tab==='now'?.12+.38*warm:.08).toFixed(2));
+  bg.style.setProperty('--glow',(night?.55:.8)*(tab==='now'?1:.6)+'');
+  bg.classList.toggle('pulse',live);
+}
+// волна света от пальца: старт смены — красная, сохранение — белая, расчёт — зелёная
+let lastTap={x:innerWidth/2,y:innerHeight/2};
+document.addEventListener('pointerdown',e=>{ lastTap={x:e.clientX,y:e.clientY}; },true);
+function wave(color,x,y){
+  if(reduce()) return;
+  const bg=$('#bg'); if(!bg) return;
+  const w=document.createElement('i'); w.className='wave';
+  w.style.left=(x==null?lastTap.x:x)+'px'; w.style.top=(y==null?lastTap.y:y)+'px'; w.style.setProperty('--wc',color);
+  bg.appendChild(w);
+  w.animate([{transform:'translate(-50%,-50%) scale(.1)',opacity:.75},{transform:'translate(-50%,-50%) scale(9)',opacity:0}],{duration:1400,easing:'cubic-bezier(.2,.7,.3,1)'}).onfinish=()=>w.remove();
+}
+// глубина: фон уезжает медленнее карточек
+function bgParallax(y){ const bg=$('#bg'); if(bg&&!reduce()) bg.style.setProperty('--py',(-Math.min(y,800)*.12).toFixed(1)+'px'); }
+document.addEventListener('visibilitychange',()=>{ const bg=$('#bg'); if(bg) bg.classList.toggle('still',document.hidden); });
+
+/* ======================= ЦВЕТ ЧЕЛОВЕКА ======================= */
+// у каждого свой постоянный приглушённый оттенок — из имени
+const PALETTE=['#8fb3ff','#a7d88b','#e8c07d','#f29bab','#c4a6f5','#8fd6f0','#86d8c4','#f5a97f','#b9c3ef','#9ee6df','#e6cf9a','#d2a8e8'];
+function personColor(name){ let h=0; const s=String(name||''); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return PALETTE[h%PALETTE.length]; }
+const avHTML=(name,cls)=>{ const c=personColor(name); return '<div class="av '+(cls||'')+'" style="--pc:'+c+'">'+esc(initials(name))+'</div>'; };
+
+/* ======================= СТЕКЛО ПЛИТОК: БЛИК И СВЕТ ПОД ПАЛЬЦЕМ ======================= */
+// раз в несколько секунд по стеклу пробегает блик — у каждой плитки в своё время
+function sheenDelay(){ return '--d:'+(-Math.random()*9).toFixed(1)+'s'; }
+document.addEventListener('pointerdown',e=>{
+  const t=e.target.closest('.sheen'); if(!t||reduce()) return;
+  const r=t.getBoundingClientRect(); t.style.setProperty('--mx',(e.clientX-r.left)+'px'); t.style.setProperty('--my',(e.clientY-r.top)+'px');
+  t.classList.add('lit'); const off=()=>{ setTimeout(()=>t.classList.remove('lit'),180); document.removeEventListener('pointerup',off,true); document.removeEventListener('pointercancel',off,true); };
+  document.addEventListener('pointerup',off,true); document.addEventListener('pointercancel',off,true);
+},true);
+
+/* ======================= «СЕЙЧАС»: ВНИМАНИЕ, СЕГОДНЯ, МОИ ДЕНЬГИ, ЗА ЭТИМ СТОЛОМ ======================= */
+// то, что нельзя упустить: появляется, только когда есть
+function attentionItems(){
+  const out=[];
+  (S.live||[]).filter(l=>l.finished_at&&!hiddenIds.has(l.id)).forEach(l=>out.push({k:'fin',id:l.id,t:'Смена закончена, но не сохранена',s:tHM(Date.parse(l.started_at))+'–'+tHM(Date.parse(l.finished_at))}));
+  const td=Date.parse(today()+'T00:00Z');
+  debts().filter(d=>(td-Date.parse(d.oldest+'T00:00Z'))/864e5>7).slice(0,2).forEach(d=>out.push({k:'debt',id:d.id,
+    t:cName(d.id)+' должен '+m$(d.total),s:'уже '+Math.round((td-Date.parse(d.oldest+'T00:00Z'))/864e5)+' дн.'}));
+  const bad=queue.filter(q=>q.failed); if(bad.length) out.push({k:'queue',t:'Не записалось: '+bad.length,s:'разобраться'});
+  if(isOwner){ const p=M.filter(m=>m.status==='pending'); if(p.length) out.push({k:'acc',t:'Запрос доступа: '+(p[0].name||'id '+p[0].tg_id)+(p.length>1?' и ещё '+(p.length-1):''),s:'решить'}); }
+  return out;
+}
+function attentionHTML(){
+  const it=attentionItems(); if(!it.length) return '';
+  return '<div class="attn">'+it.map((x,i)=>'<button class="arow sheen tone-debt" data-attn="'+i+'" style="'+sheenDelay()+'"><span class="adot"></span><div class="mid"><div class="nm">'+esc(x.t)+'</div><div class="sm">'+esc(x.s)+'</div></div><span class="chev">›</span></button>').join('')+'</div>';
+}
+function bindAttention(sc){
+  const it=attentionItems();
+  sc.querySelectorAll('[data-attn]').forEach(b=>b.onclick=()=>{ const x=it[Number(b.dataset.attn)]; if(!x) return; haptic('tap');
+    if(x.k==='fin'){ const l=S.live.find(z=>z.id===x.id); if(l) finishSheet(draftFromLive(l)); }
+    else if(x.k==='debt') settleSheet(x.id);
+    else if(x.k==='queue') $('#offbar').click();
+    else if(x.k==='acc'){ const s=settingsSheet(); accessLevel(s); } });
+}
+// «Сегодня» — одной живой строкой
+function todayHTML(){
+  const t=today(), sh=S.shifts.filter(s=>s.work_date===t), sum=sh.reduce((a,s)=>a+(Number(s.total)||0),0), h=sh.reduce((a,s)=>a+s.hours,0);
+  const live=(S.live||[]).filter(l=>!l.finished_at);
+  return '<div class="todayln sheen tone-money" style="'+sheenDelay()+'"><span class="lb">Сегодня</span><b data-count="'+sum+'">'+moneyHTML(sum)+'</b><span class="t2">'+
+    (sh.length?sh.length+' '+plural(sh.length,'смена','смены','смен')+' · '+h+' ч':'смен ещё не было')+(live.length?' · <span style="color:var(--live)">идёт '+live.length+'</span>':'')+'</span></div>';
+}
+// оператору — его деньги (узнаём по его Telegram)
+function myWorker(){
+  if(isOwner || !TG || !TG.initDataUnsafe || !TG.initDataUnsafe.user) return null;
+  const me=String(TG.initDataUnsafe.user.id); return S.workers.find(w=>String(w.tg_id||'')===me)||null;
+}
+function myMoneyHTML(){
+  const w=myWorker(); if(!w) return '';
+  const wk=weekStart(), t=today(), all=personSessions('w',w.id);
+  const week=all.filter(x=>x.s.work_date>=wk), day=all.filter(x=>x.s.work_date===t);
+  return '<span class="cap">Мои деньги</span><div class="card sheen tone-ok mymoney" style="'+sheenDelay()+'">'+avHTML(w.name,'')+
+    '<div class="mid"><div class="t2" style="font-size:13px">'+esc(w.name)+' · эта неделя</div><div class="v" data-count="'+week.reduce((a,x)=>a+x.amount,0)+'">'+moneyHTML(week.reduce((a,x)=>a+x.amount,0))+'</div>'+
+    '<div class="t2" style="font-size:13px">'+Math.round(week.reduce((a,x)=>a+x.ms,0)/36e5*10)/10+' ч · сегодня '+m$(day.reduce((a,x)=>a+x.amount,0))+'</div></div></div>';
+}
+// «За этим столом»: старые долги тех, кто сейчас сидит
+function tableDebtsHTML(){
+  const ids=new Set(); (S.live||[]).forEach(l=>(l.customer_ids||[]).forEach(id=>ids.add(id)));
+  const dl=debts().filter(d=>ids.has(d.id)); if(!dl.length) return '';
+  return '<span class="cap">За этим столом</span>'+dl.map(d=>'<button class="arow sheen tone-debt" data-settle-c="'+d.id+'" style="'+sheenDelay()+'">'+avHTML(cName(d.id),'s')+
+    '<div class="mid"><div class="nm">'+esc(cName(d.id))+' ещё должен</div><div class="sm">'+d.items.length+' '+plural(d.items.length,'смена','смены','смен')+' · с '+dayText(d.oldest)+'</div></div><b class="num" style="color:var(--debt)">'+m$(d.total)+'</b></button>').join('');
+}
 
 /* ======================= СООБЩЕНИЯ, «ОТМЕНИТЬ», ГАЛОЧКА ======================= */
 let toastT;
@@ -75,7 +174,7 @@ $('#undo button').onclick=()=>{ haptic('ok'); finishUndo(false); };
 })();
 document.addEventListener('visibilitychange',()=>{ if(document.hidden && undoCur) finishUndo(true,true); });
 function showDone(){
-  const d=$('#done'); d.classList.add('on'); haptic('ok'); setTimeout(()=>sparkle(innerWidth/2,innerHeight/2,26),120);
+  const d=$('#done'); d.classList.add('on'); haptic('ok'); wave('rgba(255,255,255,.5)',innerWidth/2,innerHeight/2); setTimeout(()=>sparkle(innerWidth/2,innerHeight/2,26),120);
   setTimeout(()=>d.classList.remove('on'),1200);
 }
 // число докручивается к новому значению
@@ -364,7 +463,7 @@ function goTab(name){
   document.querySelectorAll('#nav .nt').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===name));
   syncMini();
   if(dirtyScr[name]){ dirtyScr[name]=false; name==='now'?renderNow():renderHist(); }
-  moveInd(); renderDrawer();
+  moveInd(); renderDrawer(); updateBg(); bgParallax((name==='now'?$('#scrNow'):$('#scrHist')).scrollTop);
   rise(name==='now'?$('#scrNow'):$('#scrHist'));
 }
 document.querySelectorAll('#nav .nt').forEach(b=>b.onclick=()=>goTab(b.dataset.tab));
@@ -378,7 +477,7 @@ function syncMini(){
 ['#scrNow','#scrHist'].forEach(function(id){
   const sc=$(id); let last=0;
   sc.addEventListener('scroll',()=>{
-    const y=sc.scrollTop; syncMini();
+    const y=sc.scrollTop; syncMini(); bgParallax(y);
     if(id==='#scrNow' && !reduce()){ const au=sc.querySelector('.aurora'), he=sc.querySelector('.hero');
       if(au) au.style.transform='translateY('+(y*.45)+'px)'; if(he){ he.style.opacity=String(Math.max(0,1-y/220)); he.style.transform='scale('+Math.max(.9,1-y/1400)+')'; } }
     if(y>80 && y-last>6) $('#nav').classList.add('slim'); else if(last-y>6 || y<40) $('#nav').classList.remove('slim');
@@ -422,13 +521,22 @@ function personHTML(l,id,kind){
   const on=kind==='c'?seated(l,id):working(l,id), nm=kind==='c'?cName(id):wName(id);
   const spans=(kind==='c'?livePlayerSpans(l,nowMs()):liveWorkerSpans(l,nowMs())).find(x=>x.id===id);
   const ms=spans?spanLen(spanMinus(spans.spans,livePauseSpans(l,nowMs()))):0;
-  return '<button class="pp '+(on?'on':'off')+'" data-p="'+kind+'|'+id+'" aria-label="'+esc(nm)+(kind==='c'?(on?', за столом':', встал'):(on?', на смене':', сменился'))+'"><div class="av">'+esc(initials(nm))+
-    (kind==='c'&&l.payer_id===id?'<i class="coin">$</i>':'')+'</div><div class="tm num" data-ptm="'+kind+'|'+id+'">'+(on||ms>60e3?dur(ms):'—')+'</div></button>';
+  return '<button class="pp '+(on?'on':'off')+'" data-p="'+kind+'|'+id+'" aria-label="'+esc(nm)+(kind==='c'?(on?', за столом':', встал'):(on?', на смене':', сменился'))+'"><div class="av" style="--pc:'+personColor(nm)+'">'+esc(initials(nm))+
+    (kind==='c'&&l.payer_id===id?'<i class="coin">$</i>':'')+'</div><div class="tm num" data-ptm="'+kind+'|'+id+'">'+pTime(l,id,kind)+'</div></button>';
+}
+// под кружком: сколько насидел и сколько это стоит к этой минуте
+function pTime(l,id,kind){
+  const now=nowMs(), on=kind==='c'?seated(l,id):working(l,id);
+  const sp=(kind==='c'?livePlayerSpans(l,now):liveWorkerSpans(l,now)).find(z=>z.id===id);
+  const ms=sp?spanLen(spanMinus(sp.spans,livePauseSpans(l,now))):0;
+  if(!on && ms<=60e3) return '—';
+  const x=liveSummary(l,now), r=(kind==='c'?liveSplit(l,x.c.total,now):liveWorkerSplit(l,x.c.total/2,now)).res.find(z=>z.id===id);
+  return dur(ms)+(r&&r.amount>0.004?'<em>'+m$(r.amount)+'</em>':'');
 }
 function liveCardHTML(l){
   const fin=!!l.finished_at, paused=!!l.paused_at&&!fin, x=liveSummary(l,nowMs());
   if(fin){
-    return '<div class="card lcard fin" data-live="'+l.id+'">'+
+    return '<div class="card lcard fin sheen tone-debt" data-live="'+l.id+'">'+
       '<div class="lstat"><span class="dot debt"></span>Смена закончена · ждёт сохранения</div>'+
       '<div class="hero" style="text-align:center;padding:18px 0 8px"><div class="v">'+moneyHTML(x.c.total)+'</div>'+
       '<div class="s">'+x.h+' '+hourWord(x.h)+' · '+tHM(x.s)+'–'+tHM(x.e)+' · '+esc((l.worker_ids||[]).map(wName).join(', '))+'</div></div>'+
@@ -438,7 +546,7 @@ function liveCardHTML(l){
     '<circle class="pg" data-ring cx="130" cy="130" r="120" fill="none" stroke-width="5" stroke-linecap="round" stroke-dasharray="'+RC.toFixed(2)+'" stroke-dashoffset="'+RC.toFixed(2)+'"/>'+
     '<line class="notch" x1="250" y1="130" x2="258" y2="130" stroke-width="2" transform="rotate(180 130 130)"/></svg>';
   const ws=l.worker_ids||[], cs=l.customer_ids||[];
-  return '<div class="card lcard'+(paused?' paused':'')+'" data-live="'+l.id+'">'+
+  return '<div class="card lcard sheen '+(paused?'paused tone-debt':'tone-live')+'" data-live="'+l.id+'" style="'+sheenDelay()+'">'+
     '<div class="lstat">'+(paused?'<span class="dot debt"></span>Пауза':'<span class="dot live"></span>Идёт смена')+' · с '+tHM(Date.parse(l.started_at))+'</div>'+
     '<div class="ringbox">'+ring+'<div class="ringin"><div class="clock num" data-clock>0:00:00</div>'+
       '<div class="k">к оплате <b data-due></b></div><div class="pz num" data-pz></div></div></div>'+
@@ -480,10 +588,7 @@ function tickLive(){
     if(lastHalf[l.id]!=null && half>lastHalf[l.id] && !document.hidden){ haptic('soft'); if(d1){ d1.animate&&d1.animate([{opacity:.2},{opacity:1}],{duration:500}); } }
     lastHalf[l.id]=half;
     card.querySelectorAll('[data-ptm]').forEach(function(t){
-      const [k,id]=t.dataset.ptm.split('|'); const on=k==='c'?seated(l,id):working(l,id);
-      const sp=(k==='c'?livePlayerSpans(l,now):liveWorkerSpans(l,now)).find(z=>z.id===id);
-      const ms=sp?spanLen(spanMinus(sp.spans,livePauseSpans(l,now))):0;
-      t.textContent=on||ms>60e3?dur(ms):'—';
+      const [k,id]=t.dataset.ptm.split('|'); const v=pTime(l,id,k); if(t.innerHTML!==v) t.innerHTML=v;
     });
   });
 }
@@ -569,19 +674,22 @@ function dashboardHTML(inDrawer){
   } else {
     h+='<div class="hero calm"><div class="lbl">Должны</div><div class="v ok"><svg class="chk" width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg> Все рассчитаны</div></div>';
   }
-  if(!inDrawer) h+='<div class="ticker" data-ticker></div>';
+  if(!inDrawer) h+='<div class="ticker" data-ticker></div>'+attentionHTML();
+  else h=tableDebtsHTML()+h;
   // начать смену — главное действие, когда смены нет
   if(!locked && !inDrawer){
     const crew=lastCrew();
-    h+='<button class="startcta" data-start><div class="mid"><div class="t">Начать смену</div><div class="s">'+
+    h+='<button class="startcta sheen tone-money" data-start style="'+sheenDelay()+'"><div class="mid"><div class="t">Начать смену</div><div class="s">'+
       (crew.length?esc(crew.map(wName).join(', '))+' · как в прошлый раз':'выбрать операторов')+'</div></div>'+
-      '<div class="avs">'+crew.slice(0,3).map(id=>avHTML(wName(id),'s')).join('')+'</div><div class="play"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg></div></button>';
+      '<div class="avs">'+crew.slice(0,3).map(id=>avHTML(wName(id),'s')).join('')+'</div><div class="play"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg></div></button>'+
+      '<div class="qpills"><button class="pill" data-q-manual>Записать прошедшую</button>'+(tot>0.004?'<button class="pill" data-q-settle>Рассчитать…</button>':'')+'</div>';
   }
+  if(!inDrawer) h+=myMoneyHTML();
   if(tot>0.004){
     h+='<span class="cap">Кто должен</span>'+dl.map(d=>{
       const old=Math.round((Date.parse(today()+'T00:00Z')-Date.parse(d.oldest+'T00:00Z'))/864e5);
       const fresh=prevDebt[d.id]!=null && d.total>prevDebt[d.id]+0.004 || (prevDebt.__ready && prevDebt[d.id]==null);
-      return '<div class="swipe'+(fresh?' fresh':'')+'" data-debtor="'+d.id+'"><div class="under"><span class="r">Заплатил всё</span><span class="l"><button data-prof>Профиль</button></span></div>'+
+      return '<div class="swipe sheen tone-debt'+(fresh?' fresh':'')+'" data-debtor="'+d.id+'" style="'+sheenDelay()+'"><div class="under"><span class="r">Заплатил всё</span><span class="l"><button data-prof>Профиль</button></span></div>'+
         '<div class="face"><div class="debtor">'+avHTML(cName(d.id))+'<div class="mid"><div class="nm">'+esc(cName(d.id))+'</div>'+
         '<div class="sm">'+d.items.length+' '+plural(d.items.length,'смена','смены','смен')+' · с '+dayText(d.oldest)+(old>7?' · <span style="color:var(--debt)">'+old+' дн.</span>':'')+'</div></div>'+
         '<div class="amt" data-count="'+d.total+'">'+moneyHTML(d.total)+'</div></div></div></div>';
@@ -596,7 +704,7 @@ function dashboardHTML(inDrawer){
   const mx=Math.max(1,...wk.days), td=Math.round((Date.parse(today()+'T00:00Z')-Date.parse(wk.from+'T00:00Z'))/864e5);
   const delta=prev>0?Math.round((wk.sum-prev)/prev*100):null;
   const wmax=Math.max(1,...Object.values(wk.w));
-  h+='<span class="cap">Эта неделя</span><div class="card week">'+
+  h+=todayHTML()+'<span class="cap">Эта неделя</span><div class="card week sheen tone-money" style="'+sheenDelay()+'">'+
     '<div class="wh"><div><div class="tot" data-count="'+wk.sum+'">'+moneyHTML(wk.sum)+'</div><div class="t2" style="font-size:13.5px;margin-top:2px">'+wk.n+' '+plural(wk.n,'смена','смены','смен')+' · '+wk.h+' ч</div></div>'+
       (delta!=null?'<div class="delta '+(delta>=0?'up':'down')+'">'+(delta>=0?'↑':'↓')+' '+Math.abs(delta)+'%<span>к прошлой</span></div>':'')+'</div>'+
     '<div class="chart" data-chart>'+wk.days.map((v,i)=>{ const d=new Date(Date.parse(wk.from+'T00:00Z')+i*864e5).toISOString().slice(0,10);
@@ -608,7 +716,7 @@ function dashboardHTML(inDrawer){
   '</div>';
   if(!inDrawer){ prevDebt={__ready:true}; dl.forEach(x=>prevDebt[x.id]=x.total); }
   if(last){
-    h+='<span class="cap">Последняя смена</span><button class="lastsh" data-last="'+last.id+'"><div class="mid"><div class="nm">'+dayLabel(last.work_date)+
+    h+='<span class="cap">Последняя смена</span><button class="lastsh sheen tone-'+({ok:'ok',debt:'debt',none:'money'})[shiftStatus(last)]+'" style="'+sheenDelay()+'" data-last="'+last.id+'"><div class="mid"><div class="nm">'+dayLabel(last.work_date)+
       (last.start_time?', '+hhmm(last.start_time)+'–'+tHM(shiftEndMs(last)):'')+'</div><div class="sm" data-ago="'+shiftEndMs(last)+'">закончилась '+agoText(shiftEndMs(last))+'</div>'+miniBar(last)+'</div>'+
       '<div class="rt"><div class="sum">'+moneyHTML(last.total)+'</div>'+stPill(last)+'</div></button>';
   }
@@ -622,6 +730,10 @@ function bindDashboard(sc){
     swipeable(w,{ right:locked?null:()=>settleAll(cid,w), left:true });
   });
   const st=sc.querySelector('[data-start]'); if(st) st.onclick=()=>plusSheet();
+  const qm=sc.querySelector('[data-q-manual]'); if(qm) qm.onclick=()=>{ const sh=openSheet({detent:'full'}); manualLevel(sh,lastCrew(),[]); };
+  const qs=sc.querySelector('[data-q-settle]'); if(qs) qs.onclick=()=>debtsSheet();
+  sc.querySelectorAll('[data-settle-c]').forEach(b=>b.onclick=()=>settleSheet(b.dataset.settleC));
+  bindAttention(sc);
   startTicker(sc);
   const hd=sc.querySelector('[data-hand]'); if(hd && !locked) hd.onclick=()=>{ const s=settingsSheet(); manualIssueLevel(s); };
   const ls=sc.querySelector('[data-last]'); if(ls) ls.onclick=()=>shiftSheet(ls.dataset.last,ls);
@@ -713,7 +825,7 @@ async function settleAll(cid,wrap){
   const d=debts().find(x=>x.id===cid); if(!d){ wrap&&wrap._close(); return; }
   const {data,error}=await sb.rpc('settle',{p_customer:cid,p_amount:d.total});
   if(error){ wrap&&wrap._close(); return fail(error); }
-  haptic('ok'); const r0=wrap&&wrap.getBoundingClientRect(); if(r0) sparkle(r0.left+r0.width*.7,r0.top+r0.height/2); await reload();
+  haptic('ok'); const r0=wrap&&wrap.getBoundingClientRect(); if(r0){ sparkle(r0.left+r0.width*.7,r0.top+r0.height/2); wave('rgba(78,166,114,.65)',r0.left+r0.width/2,r0.top+r0.height/2); } await reload();
   offerUndo(cName(cid)+' заплатил '+m$(d.total),{onUndo:async()=>{ const r=await sb.rpc('unsettle',{p_payment:data.id}); if(r.error) return fail(r.error); await reload(); toast('Расчёт отменён'); }});
 }
 
@@ -748,7 +860,8 @@ function miniBar(s){
 function shiftCardHTML(s){
   const d=new Date(s.work_date+'T00:00Z'), lbl=dayLabel(s.work_date);
   const ppl=(s.custLinks||[]).map(l=>cName(l.id)).join(', ');
-  return '<div class="swipe" data-shift="'+s.id+'"><div class="under"><span class="r">Рассчитать</span><span class="l">'+
+  const tn=({ok:' tone-ok',debt:' tone-debt',none:''})[shiftStatus(s)];
+  return '<div class="swipe sheen'+tn+'" data-shift="'+s.id+'" style="'+sheenDelay()+'"><div class="under"><span class="r">Рассчитать</span><span class="l">'+
       (locked?'':'<button data-edit>Изменить</button><button class="del" data-del>Удалить</button>')+'</span></div>'+
     '<div class="face"><div class="hc2">'+
       '<div class="dt'+(lbl==='Сегодня'?' now':'')+'"><b>'+d.getUTCDate()+'</b><span>'+(lbl==='Сегодня'?'сегодня':lbl==='Вчера'?'вчера':WD[d.getUTCDay()].toLowerCase())+'</span></div>'+
@@ -858,7 +971,7 @@ function peopleHTML(){
     return '<div class="swipe" data-pp="'+x.id+'"><div class="under"><span class="r">Заплатил всё</span><span class="l"><button data-prof>Профиль</button></span></div>'+
       '<div class="face"><div class="debtor">'+avHTML(x.name)+'<div class="mid"><div class="nm">'+esc(x.name)+'</div>'+
         '<div class="sm">'+(x.n?Math.round(x.ms/36e5*10)/10+' ч · '+x.n+' '+plural(x.n,'смена','смены','смен'):'не сидел '+perName(pplPer))+' · '+lastSeen(x.last)+'</div>'+
-        activityStrip(x.all)+'</div>'+
+        activityStrip(x.all).replace('class="strip"','class="strip" style="--pc:'+personColor(x.name)+'"')+'</div>'+
         '<div class="rt">'+(debt?'<div class="sum" style="color:var(--debt)">'+moneyHTML(x.debt)+'</div><span class="st debt">'+(old>7?old+' дн.':'долг')+'</span>'
           :'<div class="sum">'+moneyHTML(x.brought)+'</div><span class="st none">'+perName(pplPer).replace('за ','')+'</span>')+'</div></div>'+
       '<div class="pdet'+(pplOpen===x.id?' open':'')+'"><div>'+
@@ -958,6 +1071,7 @@ function plusSheet(){
       for(const cid of selC){ const r=await sb.rpc('live_player',{p_id:data.id,p_customer:cid,p_action:'sit'}); if(r.data&&r.data.id) putLive(r.data); }
       haptic('ok'); sh.close(); goTab('now'); liveIdx=liveRows().findIndex(x=>x.id===data.id); renderNow();
       const rb=document.querySelector('.lcard[data-live="'+data.id+'"] .ringbox');
+      if(rb){ const q=rb.getBoundingClientRect(); wave('rgba(255,69,58,.6)',q.left+q.width/2,q.top+q.height/2); }
       if(rb&&!reduce()) rb.animate([{transform:'scale(.3)',opacity:0},{transform:'scale(1.03)',opacity:1,offset:.7},{transform:'none',opacity:1}],{duration:520,easing:'cubic-bezier(.32,.72,0,1)'});
     };
     b.querySelector('[data-manual]').onclick=()=>{ sh.set('full'); manualLevel(sh,selW,selC); };
@@ -1200,7 +1314,7 @@ function timelineHTML(o){
   const ticks=[0,.25,.5,.75,1].map(k=>tHM(o.start+W*k));
   return '<div class="ax">'+ticks.map(t=>'<span class="num">'+t+'</span>').join('')+'</div>'+
     '<div class="ln main"><span>смена</span><div class="tr">'+bars([{s:o.start,e:o.end}])+holes+'</div></div>'+
-    (o.rows||[]).map(r=>'<div class="ln"><span>'+esc(r.name)+'</span><div class="tr">'+bars(r.spans,r.w?'w':'')+holes+'</div></div>').join('');
+    (o.rows||[]).map(r=>'<div class="ln" style="--pc:'+personColor(r.name)+'"><span>'+esc(r.name)+'</span><div class="tr">'+bars(r.spans,r.w?'w':'')+holes+'</div></div>').join('');
 }
 
 /* ======================= РАСЧЁТ ======================= */
@@ -1225,7 +1339,7 @@ function settleSheet(cid){
     const sl=b.querySelector('[data-go]'); if(sl) bindSlider(sl,async()=>{
       if(!liveReady()) return;
       const {data,error}=await sb.rpc('settle',{p_customer:cid,p_amount:amt}); if(error) return fail(error,'Не рассчиталось');
-      sh.close(); showDone(); await reload();
+      sh.close(); showDone(); wave('rgba(78,166,114,.65)'); await reload();
       offerUndo('Рассчитали '+cName(cid)+' · '+m$(amt),{onUndo:async()=>{ const r=await sb.rpc('unsettle',{p_payment:data.id}); if(r.error) return fail(r.error); await reload(); toast('Расчёт отменён'); }});
     });
   }, onBack(){ sh.top().render(); }});
@@ -1657,7 +1771,7 @@ function renderAll(){
   if(hiddenIds.size){ S.shifts=S.shifts.filter(x=>!hiddenIds.has(x.id)); S.live=(S.live||[]).filter(x=>!hiddenIds.has(x.id)); }
   if(tab==='now'){ renderNow(); dirtyScr.hist=true; }
   else { const q=$('#hq'); if(q && document.activeElement===q) dirtyScr.hist=true; else renderHist(); dirtyScr.now=true; }
-  renderOffbar();
+  renderOffbar(); updateBg();
   const live=(S.live||[]).some(l=>!l.finished_at);
   document.querySelector('#nav .nt[data-tab="now"]').classList.toggle('live',live);
 }
