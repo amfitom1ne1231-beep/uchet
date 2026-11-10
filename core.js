@@ -253,7 +253,8 @@ function shiftStatus(s){
   if(!ls.length) return 'none';
   return ls.some(l=>due(l)>0.004) ? 'debt' : 'ok';
 }
-const shiftStart=s=>khToMs(s.work_date, hhmm(s.start_time)||'12:00');
+const shiftStart=s=>{ const t=String(s.start_time||'12:00:00'); return Date.parse(s.work_date+'T'+(t.length>=8?t.slice(0,8):t.slice(0,5)+':00')+'Z')-KH_OFF; };
+const khTimeSec=ms=>{ const d=new Date(ms+KH_OFF); return z2(d.getUTCHours())+':'+z2(d.getUTCMinutes())+':'+z2(d.getUTCSeconds()); };
 const shiftEndMs=s=>s.ended_at ? Date.parse(s.ended_at) : shiftStart(s)+(s.hours*60+(s.pause_min||0))*60e3;
 // хронология для расчета: от старых смен к новым — как в базе (settle)
 const byOld=(a,b)=> (a.work_date<b.work_date?-1:a.work_date>b.work_date?1:0) ||
@@ -261,7 +262,7 @@ const byOld=(a,b)=> (a.work_date<b.work_date?-1:a.work_date>b.work_date?1:0) ||
 // долги по кастомерам: [{id, total, items:[{s, l, due}], oldest}] — самые большие сверху
 function debts(){
   const by={};
-  S.shifts.slice().sort(byOld).forEach(s=>(s.custLinks||[]).forEach(function(l){
+  S.shifts.filter(s=>!s.pending).sort(byOld).forEach(s=>(s.custLinks||[]).forEach(function(l){
     const d=due(l); if(d<=0.004) return;
     const x=by[l.id]||(by[l.id]={id:l.id,total:0,items:[],oldest:s.work_date});
     x.total+=d; x.items.push({s:s,l:l,due:d});
@@ -350,6 +351,7 @@ function spansToSave(spans,w){
   return spans.map(p=>({s:new Date(p.s).toISOString(), e:new Date(p.e).toISOString()}));
 }
 function draftCalc(d){
+  if(d.orig && !d.touched) return origCalc(d);
   const w={s:d.start,e:d.end}, pauses=spanCut(d.pauses||[],d.start,d.end);
   const played=Math.max(0,(d.end-d.start-spanLen(pauses))/1000), h=paidHours(played), date=khParts(d.start).d;
   const c=calc(h,d.workers.length,d.customers.length,date,d.discount);
@@ -365,8 +367,7 @@ function draftCalc(d){
     return {customer_id:r.id, amount:r.amount, share:r.share, spans:spansToSave(players.find(p=>p.id===r.id).spans,w),
             paid_by:(d.payer && r.id!==d.payer && r.covered>0.004)?d.payer:null, paid_amount:Math.round(paid*100)/100, covered:r.covered};
   });
-  const st=khParts(d.start);
-  const row={ work_date:date, start_time:st.t, hours:h, total:c.total, kassa:c.kassa,
+  const row={ work_date:date, start_time:khTimeSec(d.start), hours:h, total:c.total, kassa:c.kassa,
     per_worker:c.perWorker, per_customer:c.perCustomer, note:(d.note||'').trim()||null,
     pause_min:Math.round(spanLen(pauses)/60000), discount:c.discount, ended_at:new Date(d.end).toISOString(),
     pause_log:(d.pauses||[]).filter(p=>p.e).map(p=>({s:new Date(p.s).toISOString(), e:new Date(p.e).toISOString()})) };
@@ -375,6 +376,18 @@ function draftCalc(d){
   crows.forEach(cr=>addSplit(now,chunkSplit({total:c.total,kassa:c.kassa,workerIds:wrows.map(x=>x.worker_id),
     workerLinks:wrows.map(x=>({id:x.worker_id,share:x.share}))},cr.paid_amount)));
   return {w,pauses,played,h,date,c,wres,cres,wrows,crows,row,now};
+}
+function origCalc(d){
+  const s=d.orig, w={s:d.start,e:d.end}, pauses=spanCut(d.pauses||[],d.start,d.end);
+  const wrows=s.workerIds.map(id=>{ const wl=(s.workerLinks||[]).find(x=>x.id===id)||{};
+    return {worker_id:id, share:Number(workerShare(s,id))||0, spans:wl.spans||[]}; });
+  const crows=(s.custLinks||[]).map(l=>({customer_id:l.id, amount:l.amount, share:l.share!=null?l.share:l.amount, spans:l.spans||[],
+    paid_by:l.paid_by||null, paid_amount:Math.min(l.paidAmt||0,l.amount), covered:0}));
+  const c={full:s.total+(s.discount||0), discount:s.discount||0, total:s.total, kassa:s.kassa, perWorker:s.per_worker, perCustomer:s.per_customer};
+  const row={ work_date:s.work_date, start_time:s.start_time, hours:s.hours, total:s.total, kassa:s.kassa, per_worker:s.per_worker,
+    per_customer:s.per_customer, note:(d.note||'').trim()||null, pause_min:s.pause_min||0, discount:s.discount||0,
+    ended_at:s.ended_at||new Date(d.end).toISOString(), pause_log:s.pause_log||[] };
+  return {w,pauses,played:Math.max(0,(d.end-d.start-spanLen(pauses))/1000),h:s.hours,date:s.work_date,c,wres:[],cres:[],wrows,crows,row,now:{kassa:0,w:{}},orig:true};
 }
 const draftFromLive=l=>{
   const now=nowMs(), end=l.finished_at?Date.parse(l.finished_at):now;
@@ -390,7 +403,7 @@ function draftFromShift(s){
   const known=Math.round(spanLen(pauses)/60000), extra=(s.pause_min||0)-known;
   if(extra>0) pauses.push({s:end-extra*60e3,e:end});   // пауза без времени — ставим в конец
   const sp=list=>{ const x=pauseSpans(list).filter(p=>p.e).map(p=>({s:p.s,e:p.e})); return x.length?x:null; };
-  return { mode:'edit', shiftId:s.id, start:start, end:end, pauses:pauses,
+  return { mode:'edit', shiftId:s.id, orig:s, touched:false, start:start, end:end, pauses:pauses,
     discount:Number(s.discount)||0, note:s.note||'',
     workers:(s.workerLinks&&s.workerLinks.length?s.workerLinks:s.workerIds.map(id=>({id:id,spans:[]}))).map(w=>({id:w.id,spans:sp(w.spans)})),
     customers:(s.custLinks||[]).map(l=>({id:l.id,spans:sp(l.spans),paid:l.paidAmt||0})),
@@ -434,19 +447,21 @@ function applyPending(){
 async function flushQueue(){
   if(flushing || !queue.length || locked || !online()) return false;
   flushing=true;
-  while(queue.length){
-    const q=queue[0];
+  let sent=false;
+  for(const q of queue.filter(x=>!x.failed)){
     try{
       if(q.t==='shift'){
         const {error}=await sb.rpc('save_shift',{p_id:q.sid,p_shift:q.row,p_workers:q.wrows,p_customers:q.crows});
-        if(error) throw error;
+        if(error){ q.failed=error.message||'ошибка'; saveQueue(); continue; }   // база отказала — не повторяем вслепую
+        const pays=(q.crows||[]).filter(c=>c.paid_amount>0.004).map(c=>({customer_id:c.customer_id,amount:c.paid_amount,alloc:[{shift_id:q.sid,amount:c.paid_amount}],note:'при сохранении смены'}));
+        if(pays.length) sb.from('payments').insert(pays).then(function(){});
         sb.functions.invoke('notify-shift',{body:{shift_id:q.sid}}).catch(function(){});
       }
-      queue=queue.filter(x=>x.id!==q.id); saveQueue();
-    }catch(e){ flushing=false; return false; }
+      queue=queue.filter(x=>x.id!==q.id); saveQueue(); sent=true;
+    }catch(e){ break; }   // нет связи — попробуем позже
   }
   flushing=false;
-  return true;
+  return sent;
 }
 
 /* ======================= ЗАГРУЗКА ======================= */

@@ -44,7 +44,8 @@ function toast(text,err){
 }
 async function fail(error,what){
   const m=error&&error.message?error.message:String(error||'');
-  toast(/row-level security|permission/i.test(m) ? 'Нет прав на запись' : (what||'Не получилось')+(m&&isOwner?': '+m:''), true);
+  const human=/[а-яё]/i.test(m) && !/[a-z_]{6,}/.test(m.replace(/[^\x00-\x7f]/g,' ').replace(/https?:\S+/g,''));
+  toast(/row-level security|permission/i.test(m) ? 'Нет прав на запись' : human ? m.charAt(0).toUpperCase()+m.slice(1) : (what||'Не получилось')+(m&&isOwner?': '+m:''), true);
 }
 // Действие делается сразу, 5 секунд висит «Отменить». Новое «Отменить» закрепляет прежнее.
 let undoCur=null, undoT=null;
@@ -57,12 +58,14 @@ function offerUndo(text,o){
   rg.style.transition='stroke-dashoffset 5s linear'; rg.style.strokeDashoffset='56.55';
   u.classList.add('on');
   clearTimeout(undoT); undoT=setTimeout(()=>finishUndo(true),5000);
+  syncSheets();
 }
-function finishUndo(commit){
+function finishUndo(commit,leaving){
   const o=undoCur; undoCur=null; clearTimeout(undoT);
   $('#undo').classList.remove('on');
   if(!o) return;
-  try{ if(commit){ o.onCommit&&o.onCommit(); } else { o.onUndo&&o.onUndo(); } }catch(e){}
+  try{ if(commit){ o.onCommit&&o.onCommit(leaving); } else { o.onUndo&&o.onUndo(); } }catch(e){}
+  syncSheets();
 }
 $('#undo button').onclick=()=>{ haptic('ok'); finishUndo(false); };
 (function(){   // смахнул плашку вниз — спряталась, действие осталось
@@ -70,7 +73,7 @@ $('#undo button').onclick=()=>{ haptic('ok'); finishUndo(false); };
   u.addEventListener('pointerdown',e=>{ if(e.target.closest('button')) return; y0=e.clientY; });
   u.addEventListener('pointerup',e=>{ if(y0!=null && e.clientY-y0>20) finishUndo(true); y0=null; });
 })();
-document.addEventListener('visibilitychange',()=>{ if(document.hidden && undoCur) finishUndo(true); });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden && undoCur) finishUndo(true,true); });
 function showDone(){
   const d=$('#done'); d.classList.add('on'); haptic('ok'); setTimeout(()=>sparkle(innerWidth/2,innerHeight/2,26),120);
   setTimeout(()=>d.classList.remove('on'),1200);
@@ -93,6 +96,8 @@ function syncSheets(){
   document.body.classList.toggle('sheeted',sheets.length>0);
   sheets.forEach((s,i)=>s.el.classList.toggle('top',i===sheets.length-1));
   if(tgv('6.1')){ if(sheets.length) TG.BackButton.show(); else TG.BackButton.hide(); }
+  // открыт черновик или ждет «Отменить» — Telegram переспросит перед закрытием
+  if(tgv('6.2')) tgTry(()=> (sheets.some(x=>x.guard&&x.guard())||undoCur||queue.length) ? TG.enableClosingConfirmation() : TG.disableClosingConfirmation());
 }
 if(TG && tgv('6.1')) TG.BackButton.onClick(()=>{ const s=sheets[sheets.length-1]; if(!s) return; if(s.levels.length>1) s.pop(); else s.close(); });
 $('#scrim').onclick=()=>{ const s=sheets[sheets.length-1]; if(s) s.close(); };
@@ -105,8 +110,14 @@ function openSheet(o){
   const sh={el:el, levels:[], detent:o.detent||'full', onClose:o.onClose};
   const posOf=d=> d==='half' ? H()*0.42 : 0;
   sh.set=function(d){ sh.detent=d; el.style.transform='translateY('+posOf(d)+'px)'; };
-  sh.close=function(){
-    if(sh.closed) return; sh.closed=true;
+  sh.close=function(force){
+    if(sh.closed) return;
+    if(!force && sh.guard && sh.guard()){
+      sh.set(sh.detent);
+      ask('Закрыть без сохранения? Изменения пропадут.').then(ok=>{ if(ok) sh.close(true); });
+      return;
+    }
+    sh.closed=true;
     el.classList.add('closing'); el.style.transform='translateY(100%)';
     const i=sheets.indexOf(sh); if(i>=0) sheets.splice(i,1); syncSheets();
     setTimeout(()=>el.remove(),320);
@@ -215,20 +226,20 @@ function swipeable(wrap,o){
   face.addEventListener('pointermove',e=>{
     if(x0==null) return;
     const ddx=e.clientX-x0, ddy=e.clientY-y0;
-    if(horiz==null){ if(Math.abs(ddx)>8||Math.abs(ddy)>8){ horiz=Math.abs(ddx)>Math.abs(ddy); if(horiz) face.setPointerCapture(e.pointerId); else { x0=null; return; } } else return; }
+    if(horiz==null){ if(Math.abs(ddx)>10||Math.abs(ddy)>8){ horiz=Math.abs(ddx)>Math.abs(ddy)*1.6; if(horiz) face.setPointerCapture(e.pointerId); else { x0=null; return; } } else return; }
     if(!horiz) return;
     dx=startX+ddx;
     if(dx>0 && !o.right) dx=0;
     if(dx<0 && !o.left) dx=0;
     if(dx<-LW()) dx=-LW()+(dx+LW())/4;
     set(dx,false);
-    const on=dx>W()*0.4;
+    const on=dx>W()*0.55;
     if(on!==armed){ armed=on; haptic(on?'soft':'pick'); }
   });
   const up=()=>{
     if(x0==null) return; x0=null;
     if(!horiz){ return; }
-    if(dx>W()*0.4 && o.right){ set(W(),true); setTimeout(()=>{ o.right(); },220); dx=0; return; }
+    if(dx>W()*0.55 && o.right){ set(W(),true); setTimeout(()=>{ o.right(); },220); dx=0; return; }
     if(dx<-50 && o.left){ set(-LW(),true); openSwipe=wrap; dx=-LW(); return; }
     set(0,true); dx=0;
   };
@@ -269,10 +280,12 @@ function bindSlider(sl,fn){
   const knob=sl.querySelector('.knob'), fill=sl.querySelector('.fill'), lbl=sl.querySelector('.lbl');
   let x0=null, max=0, x=0;
   const set=v=>{ x=v; knob.style.transform='translateX('+v+'px)'; fill.style.width=(v+56)+'px'; lbl.style.opacity=String(1-v/max*1.3); };
-  knob.addEventListener('pointerdown',e=>{ x0=e.clientX; max=sl.clientWidth-60; sl.classList.remove('go'); knob.setPointerCapture(e.pointerId); haptic('tap'); });
+  let busy=false;
+  knob.addEventListener('pointerdown',e=>{ if(busy) return; x0=e.clientX; max=sl.clientWidth-60; sl.classList.remove('go'); try{ knob.setPointerCapture(e.pointerId); }catch(_){} haptic('tap'); });
   knob.addEventListener('pointermove',e=>{ if(x0==null) return; set(Math.max(0,Math.min(max,e.clientX-x0))); });
   const up=()=>{ if(x0==null) return; x0=null; sl.classList.add('go');
-    if(x>=max*0.88){ set(max); haptic('double'); setTimeout(()=>{ fn(); setTimeout(()=>{ set(0); lbl.style.opacity=''; },500); },120); }
+    if(x>=max*0.88){ set(max); haptic('double'); busy=true; sl.classList.add('busy');
+      setTimeout(async()=>{ try{ await fn(); }finally{ busy=false; sl.classList.remove('busy'); if(sl.isConnected){ set(0); lbl.style.opacity=''; } } },120); }
     else { set(0); lbl.style.opacity=''; } };
   knob.addEventListener('pointerup',up); knob.addEventListener('pointercancel',up);
 }
@@ -313,6 +326,8 @@ function pickTime(sh,o){
       dz.onclick=e=>{ const x=e.target.closest('[data-d]'); if(!x) return; day=x.dataset.d; haptic('pick');
         dz.querySelectorAll('button').forEach(z=>z.setAttribute('aria-pressed',z===x)); }; }
     b.querySelector('[data-ok]').onclick=()=>{
+      const at=w=>{ const it=w.querySelectorAll('[data-v]'); return Number(it[Math.max(0,Math.min(it.length-1,Math.round(w.scrollTop/44)))].dataset.v); };
+      hh=at(b.querySelector('[data-h]')); mm=at(b.querySelector('[data-m]'));
       const t=z2(hh)+':'+z2(mm);
       const ms=o.days ? khToMs(day,t) : khNear(t,o.ref||o.value);
       haptic('tap'); afterPick(sh,()=>o.onPick(ms));
@@ -327,7 +342,7 @@ function pickAmount(sh,o){
       '<div class="quick">'+(o.quick||[]).map(q=>'<button data-q="'+q.v+'">'+esc(q.l)+'</button>').join('')+'</div>'+
       '<div class="keypad">'+['1','2','3','4','5','6','7','8','9',',','0','⌫'].map(k=>'<button data-k="'+k+'">'+k+'</button>').join('')+'</div>'+
       '<button class="btn" data-ok style="margin-top:14px">Готово</button>';
-    const show=()=>{ const v=parseAmt(s); b.querySelector('[data-v]').innerHTML=moneyHTML(v); };
+    const show=()=>{ const v=parseAmt(s); b.querySelector('[data-v]').innerHTML=moneyHTML(v); b.querySelector('[data-ok]').disabled=!(v>0||o.allowZero); };
     show();
     b.querySelector('.keypad').onclick=e=>{ const k=e.target.closest('[data-k]'); if(!k) return; haptic('pick');
       const x=k.dataset.k;
@@ -348,6 +363,7 @@ function goTab(name){
   $('#scrHist').classList.toggle('off-r',name!=='hist');
   document.querySelectorAll('#nav .nt').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===name));
   syncMini();
+  if(dirtyScr[name]){ dirtyScr[name]=false; name==='now'?renderNow():renderHist(); }
   rise(name==='now'?$('#scrNow'):$('#scrHist'));
 }
 document.querySelectorAll('#nav .nt').forEach(b=>b.onclick=()=>goTab(b.dataset.tab));
@@ -602,7 +618,7 @@ function bindDashboard(sc){
   });
   const st=sc.querySelector('[data-start]'); if(st) st.onclick=()=>plusSheet();
   startTicker(sc);
-  const hd=sc.querySelector('[data-hand]'); if(hd) hd.onclick=()=>{ const s=settingsSheet(); manualIssueLevel(s); };
+  const hd=sc.querySelector('[data-hand]'); if(hd && !locked) hd.onclick=()=>{ const s=settingsSheet(); manualIssueLevel(s); };
   const ls=sc.querySelector('[data-last]'); if(ls) ls.onclick=()=>shiftSheet(ls.dataset.last,ls);
   // график: нажал на день — всплыла подсказка; второй раз — история этого дня
   const ch=sc.querySelector('[data-chart]'), tip=ch&&ch.querySelector('[data-tip]'); let cur=null;
@@ -697,7 +713,7 @@ async function settleAll(cid,wrap){
 }
 
 /* ======================= ИСТОРИЯ ======================= */
-let histQ='', histChip='', searchOpen=false, histSeg='shifts';
+let histQ='', histChip='', searchOpen=false, histSeg='shifts', histLimit=60;
 function histMatch(e){
   if(histChip==='debt' && !(e.kind==='shift' && shiftStatus(e.s)==='debt')) return false;
   if(histChip==='none' && !(e.kind==='shift' && shiftStatus(e.s)==='none')) return false;
@@ -759,7 +775,8 @@ function renderHist(){
   const monthTot={};
   list.forEach(e=>{ const m=e.date.slice(0,7), t=monthTot[m]||(monthTot[m]={n:0,sum:0});
     if(e.kind==='shift'){ t.n++; t.sum+=e.s.total; } else if(e.kind==='pay'){ t.n++; t.sum+=e.p.amount; } });
-  list.forEach(function(e){
+  // длинную историю показываем порциями — экран не тормозит
+  list.slice(0,histLimit).forEach(function(e){
     const m=e.date.slice(0,7);
     if(m!==curM){ curM=m; curD=''; const p=m.split('-'), t=monthTot[m]||{n:0,sum:0};
       h+='<div class="month"><b>'+MONFULL[Number(p[1])-1]+(p[0]!==today().slice(0,4)?' '+p[0]:'')+'</b><span>'+
@@ -768,7 +785,9 @@ function renderHist(){
       h+= histSeg==='shifts' ? '<a id="d-'+e.date+'"></a>' : '<div class="day" id="m-'+e.date+'">'+dayLabel(e.date)+'</div>'; }
     h+= e.kind==='shift' ? shiftCardHTML(e.s) : moneyRowHTML(e);
   });
+  if(list.length>histLimit) h+='<button class="btn sec" data-more style="margin-top:14px">Показать ещё '+Math.min(60,list.length-histLimit)+'</button>';
   sc.innerHTML=h; sc.scrollTop=keep;
+  const more=sc.querySelector('[data-more]'); if(more) more.onclick=()=>{ histLimit+=60; haptic('tap'); renderHist(); };
   sc.querySelector('[data-srch]').onclick=()=>{ searchOpen=!searchOpen; haptic('tap'); sc.querySelector('.search').classList.toggle('open',searchOpen); if(searchOpen) setTimeout(()=>$('#hq').focus(),250); };
   sc.querySelectorAll('[data-seg]').forEach(b=>b.onclick=()=>{ if(histSeg===b.dataset.seg) return; histSeg=b.dataset.seg; histChip=''; haptic('pick'); sc.scrollTop=0; renderHist(); rise(sc); });
   const hq=$('#hq'); hq.oninput=()=>{ histQ=hq.value; clearTimeout(hq._t); hq._t=setTimeout(()=>{ renderHist(); const n=$('#hq'); n.focus(); n.setSelectionRange(n.value.length,n.value.length); },250); };
@@ -779,7 +798,7 @@ function renderHist(){
     face.onclick=()=>shiftSheet(sid,face);
     const ed=w.querySelector('[data-edit]'); if(ed) ed.onclick=e=>{ e.stopPropagation(); w._close(); editShift(sid); };
     const dl=w.querySelector('[data-del]'); if(dl) dl.onclick=e=>{ e.stopPropagation(); deleteShift(sid); };
-    swipeable(w,{ right:(locked||shiftStatus(s())!=='debt')?null:()=>{ w._reset(); settleShiftSheet(sid); }, left:!locked });
+    swipeable(w,{ right:(locked||s().pending||shiftStatus(s())!=='debt')?null:()=>{ w._reset(); settleShiftSheet(sid); }, left:!locked });
     longPress(face,()=>{
       const acts=[]; const x=s(); if(!x) return;
       if(!locked && shiftStatus(x)==='debt') acts.push({label:'Рассчитать',icon:'$',fn:()=>settleShiftSheet(sid)});
@@ -857,15 +876,23 @@ async function copyShift(s){
   try{ await navigator.clipboard.writeText(txt); toast('Скопировано'); }catch(e){ toast('Не скопировалось',true); }
 }
 // удалить смену: сразу пропадает, через 5 секунд — из базы (если не отменили)
+const hiddenIds=new Set();   // удалено, но 5 секунд можно вернуть — при обновлении не показываем
 function deleteShift(sid){
-  const s=S.shifts.find(x=>x.id===sid); if(!s||!liveReady()) return;
-  S.shifts=S.shifts.filter(x=>x.id!==sid); renderAll(); haptic('warn');
-  sheets.slice().forEach(x=>x.close());
+  const s=S.shifts.find(x=>x.id===sid); if(!s) return;
+  if(s.pending){   // еще не отправлена — просто убираем из очереди
+    queue=queue.filter(q=>q.sid!==sid); saveQueue(); S.shifts=S.shifts.filter(x=>x.id!==sid); renderAll(); sheets.slice().forEach(x=>x.close(true)); toast('Убрано из очереди'); return; }
+  if(!liveReady()) return;
+  hiddenIds.add(sid); S.shifts=S.shifts.filter(x=>x.id!==sid); renderAll(); haptic('warn');
+  sheets.slice().forEach(x=>x.close(true));
   offerUndo('Смена '+dayText(s.work_date)+' удалена',{
-    onUndo:()=>{ S.shifts.push(s); renderAll(); toast('Смена возвращена'); },
-    onCommit:async()=>{   // сообщение об отмене — пока смена еще в базе
-      try{ await sb.functions.invoke('notify-shift',{body:{shift_id:sid,mode:'cancel'}}); }catch(_){}
-      const {error}=await sb.from('shifts').delete().eq('id',sid); if(error){ S.shifts.push(s); renderAll(); return fail(error,'Не удалилась'); } }
+    onUndo:()=>{ hiddenIds.delete(sid); if(!S.shifts.some(x=>x.id===sid)) S.shifts.push(s); renderAll(); toast('Смена возвращена'); },
+    onCommit:async(leaving)=>{
+      // сообщение в чаты собирается из базы — отправляем, даем ему прочитать смену, потом удаляем;
+      // если учет закрывают прямо сейчас — удаляем сразу, без сообщения
+      if(!leaving){ sb.functions.invoke('notify-shift',{body:{shift_id:sid,mode:'cancel'}}).catch(function(){}); await new Promise(r=>setTimeout(r,900)); }
+      const {error}=await sb.from('shifts').delete().eq('id',sid);
+      hiddenIds.delete(sid);
+      if(error){ if(!S.shifts.some(x=>x.id===sid)) S.shifts.push(s); renderAll(); return fail(error,'Не удалилась'); } }
   });
 }
 
@@ -977,30 +1004,33 @@ function manualLevel(sh,selW,selC){
   finishLevel(sh,d,'Прошедшая смена');
 }
 function finishSheet(d){ const sh=openSheet({detent:'full'}); finishLevel(sh,d); return sh; }
-function editShift(sid){ const s=S.shifts.find(x=>x.id===sid); if(!s||!liveReady()) return; sheets.slice().forEach(x=>x.close()); setTimeout(()=>finishSheet(draftFromShift(s)),sheets.length?300:0); }
+function editShift(sid){ const s=S.shifts.find(x=>x.id===sid); if(!s||s.pending||!liveReady()) return; const had=sheets.length; sheets.slice().forEach(x=>x.close(true)); setTimeout(()=>finishSheet(draftFromShift(s)),had?300:0); }
 function finishLevel(sh,d,title){
   const lv={title:title||'Итог', render(b,me){
     const x=draftCalc(d), live=d.mode==='live', edit=d.mode==='edit';
+    const T=()=>{ d.dirty=true; d.touched=true; };   // поменяли то, от чего зависят суммы
+    sh.guard=()=>!!d.dirty;
     me.setTitle((title?'':'Смена · ')+x.h+' ч · '+m$(x.c.total));
     const tl=timelineHTML({start:d.start,end:d.end,pauses:x.pauses,
       rows:d.customers.map(p=>({name:cName(p.id),spans:p.spans||[{s:d.start,e:d.end}]})).concat(d.workers.map(p=>({name:wName(p.id),spans:p.spans||[{s:d.start,e:d.end}],w:1})))});
     const crow=cr=>{ const src=d.customers.find(p=>p.id===cr.customer_id), paidAll=cr.paid_amount>=cr.amount-0.004&&cr.amount>0.004, part=cr.paid_amount>0.004&&!paidAll;
       const covered=cr.paid_by&&cr.amount<=0.004;
       return '<div class="crow" data-c="'+cr.customer_id+'">'+avHTML(cName(cr.customer_id),'s')+'<div class="mid"><div class="nm">'+esc(cName(cr.customer_id))+(d.payer===cr.customer_id?' · за всех':'')+'</div>'+
-        '<div class="sm">'+(covered?'платит '+esc(cName(cr.paid_by)):part?'заплатил '+m$(cr.paid_amount)+', долг '+m$(cr.amount-cr.paid_amount):(cr.covered>0.004?'свои '+m$(cr.share):''))+'</div></div>'+
-        (covered?'':'<button class="a num" data-amt>'+m$(cr.amount)+'</button><div class="seg'+(paidAll||part?'':' debt')+'"><button data-paid aria-pressed="'+(paidAll||part)+'">'+(part?'Часть':'Заплатил')+'</button><button data-debt aria-pressed="'+!(paidAll||part)+'">Долг</button></div>')+'</div>'; };
+        '<div class="sm">'+(covered?'платит '+esc(cName(cr.paid_by)):edit?'':part?'заплатил '+m$(cr.paid_amount)+', долг '+m$(cr.amount-cr.paid_amount):(cr.covered>0.004?'свои '+m$(cr.share):''))+'</div></div>'+
+        (covered?'':edit?'<b class="num" style="font-weight:500">'+m$(cr.amount)+'</b><span class="st '+(paidAll?'ok':'debt')+'">'+(paidAll?'оплачено':'долг '+m$(cr.amount-cr.paid_amount))+'</span>'
+          :'<button class="a num" data-amt>'+m$(cr.amount)+'</button><div class="seg'+(paidAll||part?'':' debt')+'"><button data-paid aria-pressed="'+(paidAll||part)+'">'+(part?'Часть':'Заплатил')+'</button><button data-debt aria-pressed="'+!(paidAll||part)+'">Долг</button></div>')+'</div>'; };
     const paidNow=x.crows.reduce((a,c)=>a+c.paid_amount,0), debtNow=x.crows.reduce((a,c)=>a+Math.max(0,c.amount-c.paid_amount),0);
     b.innerHTML=
       '<div class="tl" style="margin-top:4px">'+tl+'</div>'+
       '<div class="timepair" style="margin-top:14px"><button data-t="s"><span>Начало</span><b class="num">'+tHM(d.start)+'</b> <span style="display:inline">'+dayText(khParts(d.start).d)+'</span></button>'+
         '<button data-t="e"><span>Конец</span><b class="num">'+tHM(d.end)+'</b> <span style="display:inline">'+dayText(khParts(d.end).d)+'</span></button></div>'+
-      '<div class="note" style="text-align:center">отсижено '+clockHM(x.played)+' → к оплате '+x.h+' '+hourWord(x.h)+'</div>'+
+      '<div class="note" style="text-align:center">'+(x.orig?'суммы как записаны — поменяй время, людей или паузы, чтобы пересчитать':'отсижено '+clockHM(x.played)+' → к оплате '+x.h+' '+hourWord(x.h))+'</div>'+
       '<span class="cap">Паузы — не оплачиваются</span><div class="card" style="padding:4px 14px">'+
         (d.pauses.length?d.pauses.map((p,i)=>'<div class="prow"><button class="w num" data-ps="'+i+'" style="text-align:left">'+tHM(p.s)+' – '+(p.e?tHM(p.e):'…')+'</button><span class="d">'+(p.e?pauseText(Math.round((p.e-p.s)/60000))||'<1 мин':'')+'</span><button class="del" data-pd="'+i+'">✕</button></div>').join(''):'<div class="prow"><span class="w t3">Пауз не было</span></div>')+
         '<div class="prow"><button class="w t2" data-padd style="text-align:left">+ Пауза</button></div></div>'+
       '<span class="cap">Кастомеры</span><div class="card" style="padding:2px 14px">'+
         (x.crows.length?x.crows.map(crow).join(''):'<div class="prow"><span class="w t3">Впиши, кто сидел — без этого не рассчитаться</span></div>')+
-        '<div class="prow"><button class="w t2" data-cadd style="text-align:left">+ Кастомер</button>'+(x.crows.length>1?'<button class="pill" data-allpaid>Все заплатили</button>':'')+'</div></div>'+
+        '<div class="prow"><button class="w t2" data-cadd style="text-align:left">+ Кастомер</button>'+(x.crows.length>1&&!edit?'<button class="pill" data-allpaid>Все заплатили</button>':'')+'</div></div>'+
       (d.customers.length>1?'<span class="cap">Один платит за всех, кто сидел с ним</span><div class="pills">'+
         '<button class="pill" data-payer="" aria-pressed="'+!d.payer+'">Никто</button>'+d.customers.map(p=>'<button class="pill" data-payer="'+p.id+'" aria-pressed="'+(d.payer===p.id)+'">'+esc(cName(p.id))+'</button>').join('')+'</div>':'')+
       '<span class="cap">Операторы</span><div class="card" style="padding:2px 14px">'+
@@ -1018,7 +1048,10 @@ function finishLevel(sh,d,title){
     b.querySelectorAll('[data-t]').forEach(t=>t.onclick=()=>{
       const k=t.dataset.t; pickTime(sh,{title:k==='s'?'Начало':'Конец',value:k==='s'?d.start:d.end,ref:k==='s'?d.start:d.end,days:d.mode!=='live',
         onPick:ms=>{ const old=k==='s'?d.start:d.end;
+          if(k==='s' && d.mode==='manual'){ const dl=ms-d.start; d.start=ms; d.end+=dl; d.pauses=d.pauses.map(p=>({s:p.s+dl,e:p.e&&p.e+dl}));
+            [...d.workers,...d.customers].forEach(p=>{ if(p.spans) p.spans=p.spans.map(z=>({s:z.s+dl,e:z.e+dl})); }); T(); return; }
           if(k==='s'){ if(ms>=d.end) return toast('Начало позже конца',true); d.start=ms; } else { if(ms<=d.start) return toast('Конец раньше начала',true); d.end=ms; }
+          T();
           // кто был до конца — и дальше до конца; кто пришел с начала — с нового начала
           [...d.workers,...d.customers].forEach(p=>{ if(!p.spans) return; p.spans=p.spans.map(z=>({s:z.s===old&&k==='s'?ms:z.s, e:z.e===old&&k==='e'?ms:z.e})); });
         }});
@@ -1026,37 +1059,44 @@ function finishLevel(sh,d,title){
     b.querySelectorAll('[data-ps]').forEach(t=>t.onclick=()=>{
       const i=Number(t.dataset.ps), p=d.pauses[i];
       pickTime(sh,{title:'Пауза — начало',value:p.s,ref:p.s,onPick:s=>pickTime(sh,{title:'Пауза — конец',value:p.e||s+15*60e3,ref:p.e||s,onPick:e=>{
-        if(e<=s) return toast('Конец паузы раньше начала',true); d.pauses[i]={s:s,e:e}; }})});
+        if(e<=s) return toast('Конец паузы раньше начала',true); d.pauses[i]={s:s,e:e}; T(); }})});
     });
-    b.querySelectorAll('[data-pd]').forEach(t=>t.onclick=()=>{ haptic('warn'); d.pauses.splice(Number(t.dataset.pd),1); me.render(); });
-    b.querySelector('[data-padd]').onclick=()=>{ const e=d.end, s=Math.max(d.start,e-15*60e3); d.pauses.push({s:s,e:e}); haptic('tap'); me.render(); };
+    b.querySelectorAll('[data-pd]').forEach(t=>t.onclick=()=>{ haptic('warn'); d.pauses.splice(Number(t.dataset.pd),1); T(); me.render(); });
+    // новая пауза — сначала выбрать время, добавится по «Готово»
+    b.querySelector('[data-padd]').onclick=()=>{ const s0=Math.max(d.start,d.end-15*60e3);
+      pickTime(sh,{title:'Пауза — начало',value:s0,ref:s0,onPick:s=>pickTime(sh,{title:'Пауза — конец',value:Math.min(d.end,s+15*60e3),ref:s+15*60e3,onPick:e=>{
+        if(e<=s) return toast('Конец паузы раньше начала',true); d.pauses.push({s:s,e:e}); d.pauses.sort((a,z)=>a.s-z.s); T(); }})}); };
     // кастомеры: заплатил / долг / часть
     b.querySelectorAll('[data-c]').forEach(function(r){
       const id=r.dataset.c, src=d.customers.find(p=>p.id===id), cr=x.crows.find(c=>c.customer_id===id);
       const pd=r.querySelector('[data-paid]'), db=r.querySelector('[data-debt]'), am=r.querySelector('[data-amt]');
-      if(pd) pd.onclick=()=>{ haptic('soft'); src.paid='all'; me.render(); };
-      if(db) db.onclick=()=>{ haptic('soft'); src.paid=0; me.render(); };
+      if(pd) pd.onclick=()=>{ haptic('soft'); src.paid='all'; d.dirty=true; me.render(); };
+      if(db) db.onclick=()=>{ haptic('soft'); src.paid=0; d.dirty=true; me.render(); };
       if(am) am.onclick=()=>pickAmount(sh,{title:cName(id)+' заплатил',lead:'По смене '+m$(cr.amount)+'. Впиши, сколько отдал сейчас — остаток уйдет в долг.',
-        value:cr.paid_amount||cr.amount,max:cr.amount,quick:[{l:'½',v:cr.amount/2},{l:'всё',v:cr.amount},{l:'0',v:0}],onPick:v=>{ src.paid=v>=cr.amount-0.004?'all':v; }});
-      longPress(r,()=>{ d.customers=d.customers.filter(p=>p.id!==id); if(d.payer===id) d.payer=null; me.render(); toast(cName(id)+' убран'); });
+        value:cr.paid_amount||cr.amount,max:cr.amount,allowZero:true,quick:[{l:'½',v:cr.amount/2},{l:'всё',v:cr.amount},{l:'0',v:0}],onPick:v=>{ src.paid=v>=cr.amount-0.004?'all':v; d.dirty=true; }});
+      // убрать человека — долгим нажатием на имя, с вопросом
+      const who=r.querySelector('.av')&&r.querySelector('.mid');
+      if(who) longPress(who,async()=>{ if(!await ask('Убрать '+cName(id)+' из смены?')) return;
+        d.customers=d.customers.filter(p=>p.id!==id); if(d.payer===id) d.payer=null; T(); me.render(); });
     });
-    const ap=b.querySelector('[data-allpaid]'); if(ap) ap.onclick=()=>{ haptic('ok'); d.customers.forEach(p=>p.paid='all'); me.render(); };
-    b.querySelector('[data-cadd]').onclick=()=>pickPeople('c',{customer_ids:d.customers.map(p=>p.id)},id=>{ d.customers.push({id:id,spans:null,paid:0}); },sh);
-    b.querySelector('[data-wadd]').onclick=()=>pickPeople('w',{worker_ids:d.workers.map(p=>p.id)},id=>{ d.workers.push({id:id,spans:null}); },sh);
-    b.querySelectorAll('[data-payer]').forEach(p=>p.onclick=()=>{ haptic('pick'); d.payer=p.dataset.payer||null; me.render(); });
-    const disc=b.querySelector('[data-disc]'); disc.onchange=()=>{ d.discount=Math.max(0,parseAmt(disc.value)); me.render(); };
-    const note=b.querySelector('[data-note]'); note.oninput=()=>{ d.note=note.value; };
-    b.querySelector('[data-save]').onclick=function(){ d.note=note.value; d.discount=Math.max(0,parseAmt(disc.value)); saveDraft(sh,d,this); };
+    const ap=b.querySelector('[data-allpaid]'); if(ap) ap.onclick=()=>{ haptic('ok'); d.customers.forEach(p=>p.paid='all'); d.dirty=true; me.render(); };
+    b.querySelector('[data-cadd]').onclick=()=>pickPeople('c',{customer_ids:d.customers.map(p=>p.id)},id=>{ d.customers.push({id:id,spans:null,paid:0}); T(); },sh);
+    b.querySelector('[data-wadd]').onclick=()=>pickPeople('w',{worker_ids:d.workers.map(p=>p.id)},id=>{ d.workers.push({id:id,spans:null}); T(); },sh);
+    b.querySelectorAll('[data-payer]').forEach(p=>p.onclick=()=>{ haptic('pick'); d.payer=p.dataset.payer||null; T(); me.render(); });
+    // скидка: пересчет чуть позже — чтобы нажатие, ради которого ушли из поля, не потерялось
+    const disc=b.querySelector('[data-disc]'); disc.onchange=()=>{ const v=Math.max(0,parseAmt(disc.value)); if(v!==d.discount){ d.discount=v; T(); setTimeout(()=>{ if(me.el.isConnected) me.render(); },320); } };
+    const note=b.querySelector('[data-note]'); note.oninput=()=>{ d.note=note.value; d.dirty=true; };
+    b.querySelector('[data-save]').onclick=function(){ d.note=note.value; const v=Math.max(0,parseAmt(disc.value)); if(v!==d.discount){ d.discount=v; d.touched=true; } saveDraft(sh,d,this); };
     const bk=b.querySelector('[data-back]'); if(bk) bk.onclick=async()=>{
       const l=(S.live||[]).find(z=>z.id===d.liveId);
       if(l&&l.finished_at && !await ask('Смена продолжится. Время с '+tHM(Date.parse(l.finished_at))+' до сейчас тоже пойдёт в оплату. Вернуться к смене?')) return;
       const {data,error}=await sb.rpc('live_action',{p_id:d.liveId,p_action:'unfinish'}); if(error) return fail(error);
-      if(data&&data.id) putLive(data); haptic('ok'); sh.close(); renderNow(); };
+      if(data&&data.id) putLive(data); haptic('ok'); sh.close(true); renderNow(); };
     const dr=b.querySelector('[data-drop]'); if(dr) dr.onclick=()=>{
       const l=(S.live||[]).find(z=>z.id===d.liveId); if(!l) return;
-      S.live=S.live.filter(z=>z.id!==d.liveId); sh.close(); renderNow(); haptic('warn');
-      offerUndo('Смена отменена без записи',{onUndo:()=>{ S.live.push(l); renderNow(); },
-        onCommit:async()=>{ const {error}=await sb.from('live_shifts').delete().eq('id',l.id); if(error){ S.live.push(l); renderNow(); fail(error,'Не удалилась'); } }});
+      hiddenIds.add(l.id); S.live=S.live.filter(z=>z.id!==d.liveId); sh.close(true); renderNow(); haptic('warn');
+      offerUndo('Смена отменена без записи',{onUndo:()=>{ hiddenIds.delete(l.id); if(!S.live.some(z=>z.id===l.id)) S.live.push(l); renderNow(); },
+        onCommit:async()=>{ const {error}=await sb.from('live_shifts').delete().eq('id',l.id); hiddenIds.delete(l.id); if(error){ if(!S.live.some(z=>z.id===l.id)) S.live.push(l); renderNow(); fail(error,'Не удалилась'); } }});
     };
     const ds=b.querySelector('[data-delsh]'); if(ds) ds.onclick=()=>deleteShift(d.shiftId);
   }, onBack(){ lv._lvl&&lv._lvl.render(); }};
@@ -1066,7 +1106,7 @@ async function saveDraft(sh,d,btn){
   const x=draftCalc(d);
   if(x.h<1) return toast('Меньше 30 минут — записывать нечего',true);
   if(!d.workers.length) return toast('Нужен хотя бы один оператор',true);
-  if(!d.customers.length) return toast('Впиши кастомеров — без них не рассчитаться',true);
+  if(!d.customers.length && !(d.mode==='edit' && !(d.orig.custLinks||[]).length)) return toast('Впиши кастомеров — без них не рассчитаться',true);
   btn.disabled=true;
   try{
     if(d.mode==='live'){
@@ -1077,8 +1117,9 @@ async function saveDraft(sh,d,btn){
         pause_log:d.pauses.filter(p=>p.e).map(p=>({s:iso(p.s),e:iso(p.e)})), pause_sec:Math.round(spanLen(x.pauses)/1000), paused_at:null,
         customer_log:logOf(d.customers), worker_log:logOf(d.workers),
         customer_ids:d.customers.map(p=>p.id), worker_ids:d.workers.map(p=>p.id)};
-      const u=await sb.from('live_shifts').update(patch).eq('id',d.liveId);
+      const u=await sb.from('live_shifts').update(patch).eq('id',d.liveId).not('finished_at','is',null).select('id');
       if(u.error) return fail(u.error,'Не сохранилось');
+      if(!u.data||!u.data.length){ sh.close(true); await reload(); return toast('Смену уже вернули к игре или сохранили на другом телефоне',true); }
       const {data:sid,error}=await sb.rpc('save_live_shift',{p_live:d.liveId,p_shift:x.row,
         p_workers:x.wrows.map(w=>({id:w.worker_id,share:w.share,spans:w.spans})),
         p_customers:x.crows.map(c=>({id:c.customer_id,amount:c.amount,share:c.share,spans:c.spans,paid_by:c.paid_by,paid_amount:c.paid_amount}))});
@@ -1086,10 +1127,10 @@ async function saveDraft(sh,d,btn){
       sb.functions.invoke('notify-shift',{body:{shift_id:sid,mode:'new'}}).catch(function(){});
     } else {
       const edit=d.mode==='edit', sid=edit?d.shiftId:newId();
-      const crows=x.crows.map(c=>({customer_id:c.customer_id,amount:c.amount,share:c.share,spans:c.spans,paid_by:c.paid_by,paid_amount:c.paid_amount}));
+      const crows=x.crows.map(c=>Object.assign({customer_id:c.customer_id,amount:c.amount,share:c.share,spans:c.spans,paid_by:c.paid_by},edit?{}:{paid_amount:c.paid_amount}));
       if(!online()){
         if(edit) return toast('Правка — только со связью',true);
-        enqueue({t:'shift',sid:sid,row:x.row,wrows:x.wrows,crows:crows}); applyPending(); renderAll(); sh.close(); showDone(); toast('Нет сети — смена уйдёт, когда связь появится'); return;
+        enqueue({t:'shift',sid:sid,row:x.row,wrows:x.wrows,crows:crows}); applyPending(); renderAll(); sh.close(true); showDone(); toast('Нет сети — смена уйдёт, когда связь появится'); return;
       }
       const {error}=await sb.rpc('save_shift',{p_id:sid,p_shift:x.row,p_workers:x.wrows,p_customers:crows,p_edit:edit});
       if(error) return fail(error,edit?'Изменения не сохранены':'Смена не записана');
@@ -1097,7 +1138,7 @@ async function saveDraft(sh,d,btn){
         if(pays.length) sb.from('payments').insert(pays).then(function(){}); }
       sb.functions.invoke('notify-shift',{body:{shift_id:sid,mode:edit?'edit':'new'}}).catch(function(){});
     }
-    sh.close(); showDone(); await reload(); goTab('now');
+    sh.close(true); showDone(); await reload(); goTab('now');
   } finally { btn.disabled=false; }
 }
 // лента времени: шкала часов, паузы, полоски людей
@@ -1124,7 +1165,7 @@ function settleSheet(cid){
       '<div class="flowline">→ <b>кассе '+m$(pv.split.kassa)+'</b>'+Object.keys(pv.split.w).map(k=>' · <b>'+esc(wName(k))+' '+m$(pv.split.w[k])+'</b>').join('')+'</div>'+
       (locked?'':sliderHTML('протяни — получил '+m$(amt),'data-go'))+
       '<button class="btn ghost" data-prof style="margin-top:8px">Профиль ›</button>';
-    b.querySelector('[data-amt]').onclick=()=>pickAmount(sh,{title:'Сколько отдал',value:amt,max:d.total,quick:[{l:'100',v:100},{l:'200',v:200},{l:'½',v:d.total/2},{l:'всё',v:d.total}],onPick:v=>{ amt=v>0?v:d.total; }});
+    b.querySelector('[data-amt]').onclick=()=>pickAmount(sh,{title:'Сколько отдал',value:amt,max:d.total,quick:[{l:'100',v:100},{l:'200',v:200},{l:'½',v:d.total/2},{l:'всё',v:d.total}],onPick:v=>{ if(v>0) amt=v; }});
     b.querySelector('.quick').onclick=e=>{ const q=e.target.closest('[data-q]'); if(!q) return; haptic('pick'); amt=Math.min(d.total,Number(q.dataset.q)); sh.top().render(); };
     b.querySelector('[data-prof]').onclick=()=>{ sh.close(); setTimeout(()=>profileSheet('c',cid),200); };
     const sl=b.querySelector('[data-go]'); if(sl) bindSlider(sl,async()=>{
@@ -1151,9 +1192,10 @@ function settleShiftSheet(sid){
     bindSlider(b.querySelector('[data-go]'),async()=>{
       if(!liveReady()) return; const ids=owing.filter(l=>pick[l.id]); if(!ids.length) return;
       const done=[];
-      for(const l of ids){ const {data,error}=await sb.rpc('settle',{p_customer:l.id,p_amount:due(l),p_shift:s.id}); if(error){ fail(error); break; } done.push(data.id); }
-      sh.close(); showDone(); await reload();
-      if(done.length) offerUndo('Смена '+dayText(s.work_date)+' рассчитана',{onUndo:async()=>{ for(const p of done) await sb.rpc('unsettle',{p_payment:p}); await reload(); toast('Расчёт отменён'); }});
+      let bad=null;
+      for(const l of ids){ const {data,error}=await sb.rpc('settle',{p_customer:l.id,p_amount:due(l),p_shift:s.id}); if(error){ bad=error; break; } done.push(data.id); }
+      sh.close(); if(bad) fail(bad); else showDone(); await reload();
+      if(done.length) offerUndo('Смена '+dayText(s.work_date)+' рассчитана',{onUndo:async()=>{ let e=null; for(const p of done){ const r=await sb.rpc('unsettle',{p_payment:p}); if(r.error) e=r.error; } await reload(); e?fail(e):toast('Расчёт отменён'); }});
     });
   }});
 }
@@ -1164,18 +1206,18 @@ function settleOneInShift(s,l){
     b.innerHTML='<button class="amtbig edit" data-amt style="width:100%">'+moneyHTML(amt)+'</button>'+
       '<div class="flowline">→ <b>кассе '+m$(sp.kassa)+'</b>'+Object.keys(sp.w).map(k=>' · <b>'+esc(wName(k))+' '+m$(sp.w[k])+'</b>').join('')+'</div>'+
       sliderHTML('протяни — получил','data-go');
-    b.querySelector('[data-amt]').onclick=()=>pickAmount(sh,{title:'Сколько отдал',value:amt,max:due(l),quick:[{l:'½',v:due(l)/2},{l:'всё',v:due(l)}],onPick:v=>{ amt=v>0?v:due(l); }});
+    b.querySelector('[data-amt]').onclick=()=>pickAmount(sh,{title:'Сколько отдал',value:amt,max:due(l),quick:[{l:'½',v:due(l)/2},{l:'всё',v:due(l)}],onPick:v=>{ if(v>0) amt=v; }});
     bindSlider(b.querySelector('[data-go]'),async()=>{
       if(!liveReady()) return;
       const {data,error}=await sb.rpc('settle',{p_customer:l.id,p_amount:amt,p_shift:s.id}); if(error) return fail(error);
       sh.close(); showDone(); await reload();
-      offerUndo('Рассчитали '+cName(l.id)+' · '+m$(amt),{onUndo:async()=>{ await sb.rpc('unsettle',{p_payment:data.id}); await reload(); toast('Расчёт отменён'); }});
+      offerUndo('Рассчитали '+cName(l.id)+' · '+m$(amt),{onUndo:async()=>{ const r=await sb.rpc('unsettle',{p_payment:data.id}); await reload(); r.error?fail(r.error):toast('Расчёт отменён'); }});
     });
   }, onBack(){ sh.top().render(); }});
 }
 function debtsSheet(){
   const sh=openSheet({detent:'half'});
-  sh.push({title:'Должны', render(b){
+  sh.push({title:'Должны', live:true, render(b){
     const dl=debts();
     b.innerHTML=dl.length?'<div class="list">'+dl.map(d=>'<button class="row" data-c="'+d.id+'" style="width:100%;text-align:left">'+avHTML(cName(d.id),'s')+'<div class="mid"><div class="nm">'+esc(cName(d.id))+'</div><div class="sm">'+d.items.length+' '+plural(d.items.length,'смена','смены','смен')+'</div></div><div class="amt">'+moneyHTML(d.total)+'</div></button>').join('')+'</div>':'<div class="empty">Все рассчитаны ✓</div>';
     b.querySelectorAll('[data-c]').forEach(r=>r.onclick=()=>{ sh.close(); setTimeout(()=>settleSheet(r.dataset.c),220); });
@@ -1195,7 +1237,7 @@ function paymentSheet(pid){
 
 /* ======================= СМЕНА ПОДРОБНО ======================= */
 function shiftSheet(sid,fromEl){
-  const s=S.shifts.find(x=>x.id===sid); if(!s) return;
+  let s=S.shifts.find(x=>x.id===sid); if(!s) return;
   if(fromEl && !reduce()){   // карточка вырастает в панель
     const r=fromEl.getBoundingClientRect(), g=fromEl.cloneNode(true);
     Object.assign(g.style,{position:'fixed',left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px',zIndex:45,borderRadius:'22px',background:'var(--card)',pointerEvents:'none'});
@@ -1203,7 +1245,8 @@ function shiftSheet(sid,fromEl){
     g.animate([{transform:'none',opacity:1},{transform:'translateY('+(innerHeight*0.12-r.top)+'px) scale(1.04)',opacity:0}],{duration:360,easing:'cubic-bezier(.32,.72,0,1)'}).onfinish=()=>g.remove();
   }
   const sh=openSheet({detent:'full'});
-  sh.push({title:dayLabel(s.work_date)+(s.start_time?', '+hhmm(s.start_time)+'–'+tHM(shiftEndMs(s)):''), render(b){
+  sh.push({title:dayLabel(s.work_date)+(s.start_time?', '+hhmm(s.start_time)+'–'+tHM(shiftEndMs(s)):''), live:true, render(b){
+    s=S.shifts.find(x=>x.id===sid)||s;
     const st=shiftStatus(s), ls=s.custLinks||[], dsum=ls.reduce((a,l)=>a+due(l),0);
     const flow='<div class="flow" data-flow><div class="col">'+(ls.length?ls.map(l=>'<div class="nd'+(due(l)>0.004?' debt':'')+'"><b class="num">'+m$(l.amount)+'</b>'+esc(cName(l.id))+(l.paid_by&&l.amount<=0.004?' · платит '+esc(cName(l.paid_by)):due(l)>0.004?(l.paidAmt>0.004?' · долг '+m$(due(l)):' · долг'):'')+'</div>').join(''):'<div class="nd">без кастомеров</div>')+'</div><div></div>'+
       '<div class="col r"><div class="nd"><b class="num">'+m$(s.kassa)+'</b>касса</div>'+s.workerIds.map(id=>'<div class="nd"><b class="num">'+m$(workerShare(s,id))+'</b>'+esc(wName(id))+'</div>').join('')+'</div><svg></svg></div>';
@@ -1297,8 +1340,12 @@ function peopleLevel(sh,k){
     const add=b.querySelector('[data-add]'); if(add) add.onclick=async()=>{ const n=b.querySelector('[data-new]').value.trim(); if(!n) return;
       const {error}=await sb.from(T).insert({name:n}); if(error) return fail(error); haptic('ok'); await reload(); sh.top().render(); };
     b.querySelectorAll('[data-id]').forEach(r=>{ const id=r.dataset.id, p=list.find(x=>x.id===id);
-      const rn=r.querySelector('[data-ren]'); if(rn) rn.onclick=async()=>{ const n=prompt('Новое имя',p.name); if(!n||!n.trim()) return;
-        const {error}=await sb.from(T).update({name:n.trim()}).eq('id',id); if(error) return fail(error); haptic('ok'); await reload(); sh.top().render(); };
+      const rn=r.querySelector('[data-ren]'); if(rn) rn.onclick=()=>sh.push({title:'Имя', render(b2){
+        b2.innerHTML='<input data-n value="'+esc(p.name)+'"><button class="btn" data-ok style="margin-top:14px">Сохранить</button>';
+        const inp=b2.querySelector('[data-n]'); setTimeout(()=>{ inp.focus(); inp.select(); },350);
+        b2.querySelector('[data-ok]').onclick=async()=>{ const n=inp.value.trim(); if(!n) return;
+          const {error}=await sb.from(T).update({name:n}).eq('id',id); if(error) return fail(error); haptic('ok'); await reload(); sh.pop(); };
+      }});
       const ar=r.querySelector('[data-arc]'); if(ar) ar.onclick=async()=>{ const {error}=await sb.from(T).update({active:p.active===false}).eq('id',id); if(error) return fail(error); haptic('tap'); await reload(); sh.top().render(); };
       const tg=r.querySelector('[data-tg]'); if(tg) tg.onclick=()=>tgLinkLevel(sh,p);
       r.onclick=e=>{ if(e.target.closest('button')) return; sh.close(); setTimeout(()=>profileSheet(k,id),220); };
@@ -1434,8 +1481,8 @@ function meLevel(sh){
 function aboutLevel(sh){
   sh.push({title:'О версии', render(b){
     b.innerHTML='<div class="card"><div class="kv"><span>Версия</span><b>'+APP_VERSION+'</b></div><div class="kv"><span>Обновлено</span><b>'+(cachedAt&&offlineData?'из памяти':'сейчас')+'</b></div></div>'+
-      '<div class="note">Это новая версия учёта. Прежняя по-прежнему открывается и работает с теми же данными.</div>'+
-      '<a class="btn sec" href="../'+location.hash+'" style="margin-top:14px;text-decoration:none">Открыть прежнюю версию</a>';
+      '<div class="note">Прежняя версия учёта осталась запасной и работает с теми же данными.</div>'+
+      '<a class="btn sec" href="old/'+location.hash+'" style="margin-top:14px;text-decoration:none">Открыть прежнюю версию</a>';
   }});
 }
 
@@ -1456,16 +1503,27 @@ function closeGate(st){
 
 /* ======================= ЗАПУСК ======================= */
 function renderOffbar(){
-  const el=$('#offbar'), n=queue.length;
+  const el=$('#offbar'), n=queue.length, bad=queue.filter(q=>q.failed);
   if(online() && !n && !offlineData){ el.classList.remove('on'); return; }
-  el.textContent=!online()?'Нет сети — запишется, когда появится'+(n?' · в очереди '+n:''):n?'Отправляю '+n+'…':'Показаны данные из памяти';
+  el.textContent=bad.length?'Не записалось: '+bad.length+' — нажми, чтобы разобраться'
+    :!online()?'Нет сети — запишется, когда появится'+(n?' · в очереди '+n:''):n?'Отправляю '+n+'…':'Показаны данные из памяти';
   el.classList.add('on');
+  el.onclick=bad.length?async()=>{
+    const q=bad[0];
+    if(!await ask('Смена '+dayText(q.row.work_date)+' не записалась: '+q.failed+'\n\nУбрать её из очереди?')) return;
+    queue=queue.filter(x=>x.id!==q.id); saveQueue(); S.shifts=S.shifts.filter(x=>x.id!==q.sid); renderAll();
+  }:null;
 }
 window.addEventListener('online',async()=>{ renderOffbar(); if(await flushQueue()) await reload(); });
 window.addEventListener('offline',renderOffbar);
+let dirtyScr={now:false,hist:false};
 function renderAll(){
   document.body.classList.toggle('ro',locked);
-  renderNow(); renderHist(); renderOffbar();
+  // удаленное, которое еще можно вернуть, при обновлении не всплывает
+  if(hiddenIds.size){ S.shifts=S.shifts.filter(x=>!hiddenIds.has(x.id)); S.live=(S.live||[]).filter(x=>!hiddenIds.has(x.id)); }
+  if(tab==='now'){ renderNow(); dirtyScr.hist=true; }
+  else { const q=$('#hq'); if(q && document.activeElement===q) dirtyScr.hist=true; else renderHist(); dirtyScr.now=true; }
+  renderOffbar();
   const live=(S.live||[]).some(l=>!l.finished_at);
   document.querySelector('#nav .nt[data-tab="now"]').classList.toggle('live',live);
 }
@@ -1476,7 +1534,13 @@ async function reload(){
   sheets.forEach(s=>{ const t=s.top(); if(t&&t.spec.live) t.render(); });
 }
 function scheduleReload(){ clearTimeout(reloadT); reloadT=setTimeout(reload,500); }
-let started=false;
+let started=false, subscribed=false;
+function subscribeOnce(){
+  if(subscribed || !canWrite) return; subscribed=true;
+  try{ let ch=sb.channel('uchet2');
+    ['shifts','shift_customers','shift_workers','live_shifts','payments','ops','workers','customers'].forEach(t=>{ ch=ch.on('postgres_changes',{event:'*',schema:'public',table:t},scheduleReload); });
+    ch.subscribe(); }catch(_){}
+}
 async function boot(){
   loadQueue();
   if(!S.shifts.length && loadCache()){ booting=false; renderAll(); rise(tab==='now'?$('#scrNow'):$('#scrHist')); }   // сразу из памяти — без заставки
@@ -1496,8 +1560,8 @@ async function boot(){
     // кто смотрит без правки, не подписан на изменения базы — освежаем раз в минуту
     setInterval(()=>{ if(!document.hidden && !canWrite && TG) scheduleReload(); },60000);
     document.addEventListener('visibilitychange',()=>{ if(!document.hidden) scheduleReload(); });
-    try{ if(canWrite) sb.channel('uchet2').on('postgres_changes',{event:'*',schema:'public'},scheduleReload).subscribe(); }catch(_){}
   }
+  subscribeOnce();
   if(isOwner){ if(TG) sb.functions.invoke('tg-access',{body:{initData:TG.initData,owner:true}}).then(loadMembers).catch(function(){}); await loadMembers(); }
 }
 // GitHub Pages держит страницу в кэше до 10 минут, а Telegram на iPhone без сервис-воркера — проверяем версию сами

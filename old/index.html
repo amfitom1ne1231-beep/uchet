@@ -1,0 +1,3136 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Учет">
+<title>Учет</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="../icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#000;--card:#141414;--card2:#1F1F1F;--sep:#2E2E2E;--line:#3A3A3A;
+    --w:#FFF;--g1:#B4B4B4;--g2:#9A9A9A;--g3:#767676;
+    --spring:cubic-bezier(.32,.72,0,1);
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:auto;overflow-x:hidden}
+  body{margin:0 auto;max-width:540px;background:var(--bg);color:var(--w);
+    font-family:var(--sans);font-size:17px;line-height:1.42;letter-spacing:-.011em;
+    padding:14px 16px 180px;-webkit-font-smoothing:antialiased}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .lbl{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--g2)}
+
+  header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 2px 14px}
+  header h1{font-size:32px;font-weight:700;letter-spacing:-.03em;margin:0}
+  header .sub{font-size:13px;color:var(--g2);margin-top:1px}
+  .hbtns{display:flex;gap:8px;flex:0 0 auto}
+  .icn{width:38px;height:38px;border-radius:50%;border:none;background:var(--card2);
+    color:var(--g1);font-size:15px;cursor:pointer;transition:transform .5s var(--spring),background .2s}
+  .icn:active{background:var(--line)}
+  #gear:active{transform:rotate(90deg)}
+  #sync.spin{animation:spin .7s var(--spring)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .mode{display:flex;align-items:center;gap:9px;background:var(--card);border-radius:12px;
+    padding:11px 14px;margin-bottom:14px;font-size:14px}
+  .mode .t{flex:1;color:var(--g1);min-width:0}
+  .mode .t b{color:var(--w);font-weight:600}
+  .mode button{border:1px solid var(--line);background:none;color:var(--w);border-radius:999px;
+    padding:7px 14px;font-size:13.5px;cursor:pointer;font-family:var(--sans);white-space:nowrap;
+    transition:transform .2s var(--spring),background .2s,color .2s}
+  .mode button:active{transform:scale(.94);background:var(--w);color:#000}
+  body.ro .w-only{display:none!important}
+  body.no-own .own-only{display:none!important}
+  body.ro .entwrap .acts{display:none}
+  body.ro .entwrap.open .ent{transform:none}
+
+  .tabs{position:relative;display:flex;background:var(--card);border-radius:11px;padding:3px;margin-bottom:18px}
+  .tabs .glide{position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 6px)/4);
+    background:var(--card2);border-radius:9px;box-shadow:0 1px 3px rgba(0,0,0,.6);
+    transition:transform .42s var(--spring)}
+  .tabs button{position:relative;z-index:1;flex:1;padding:8px 4px;border:none;background:none;
+    color:var(--g2);font-family:var(--sans);font-size:14px;font-weight:600;letter-spacing:-.01em;
+    cursor:pointer;transition:color .3s}
+  .tabs button[aria-selected="true"]{color:var(--w)}
+  .tabs button.hot:after{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;
+    background:var(--w);margin-left:5px;vertical-align:2px;animation:pulse 1.6s infinite}
+
+  /* поле с подписью внутри: пауза и скидка в форме */
+  .field{display:flex;align-items:center;gap:10px;margin-top:10px;background:var(--card2);
+    border-radius:12px;padding-left:14px;border:1px solid transparent}
+  .field:focus-within{border-color:var(--g3)}
+  .field span{font-size:14px;color:var(--g2);flex:0 0 auto;font-family:var(--sans)}
+  .field input{background:none;border:none;text-align:right;padding:13px 14px 13px 0}
+  .field input:focus{border:none}
+
+  /* живая смена: таймер */
+  .lcard{padding:16px 16px 14px}
+  .lhead{display:flex;align-items:center;gap:8px;font-size:15px}
+  .lhead .lmeta{color:var(--g2);font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lcard .live.off{animation:none;opacity:.35}
+  .ltimer{font-family:var(--mono);font-size:52px;font-weight:600;letter-spacing:-.04em;line-height:1.05;
+    margin:14px 0 4px;text-align:center}
+  .lcard.paused .ltimer{color:var(--g2)}
+  .lsum{text-align:center;font-size:13px;color:var(--g2);font-family:var(--mono)}
+  .lsum b{color:var(--w);font-weight:600}
+  .lpauses{text-align:center;font-size:12.5px;color:var(--g2);margin-top:6px;line-height:1.45}
+  .lpauses:empty{display:none}
+  .prow{display:flex;align-items:center;gap:6px;margin-top:8px}
+  .prow input{flex:1;min-width:0;padding:10px 6px;font-size:15px;text-align:center}
+  .prow input::-webkit-calendar-picker-indicator{display:none}
+  .prow span{color:var(--g2);font-size:13px}
+  .prow .pd{flex:0 0 56px;text-align:right;font-family:var(--mono);color:var(--g1);font-size:12.5px}
+  .prow .del{min-width:36px;min-height:40px}
+  .prow .pn{flex:0 0 76px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;color:var(--w)}
+  .pspans{font-size:12.5px;color:var(--g2);padding:0 0 4px;line-height:1.45}
+  .plrow{margin-top:12px;padding-top:10px;border-top:1px solid var(--sep)}
+  .plrow .top{display:flex;justify-content:space-between;gap:10px;font-size:15px}
+  .plrow .top b{font-family:var(--mono);font-weight:500;font-size:13px;color:var(--g1);text-align:right}
+  .plrow .times{display:flex;align-items:center;gap:6px;margin-top:8px}
+  .plrow .times span{font-size:12.5px;color:var(--g2)}
+  .plrow .times input{flex:1;min-width:0;padding:10px 6px;font-size:15px;text-align:center}
+  .plrow .times input::-webkit-calendar-picker-indicator{display:none}
+  .chip.gone{border-style:dashed;color:var(--g3)}
+  .lbtns{display:flex;gap:8px;margin-top:16px}
+  .lbtns .btn{flex:1;padding:14px 8px;font-size:15px}
+  .lcard .rm{width:100%;margin-top:8px}
+  .lgrid{display:flex;gap:10px;margin-top:6px}
+  .lgrid label{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+  .lgrid .cap{margin:8px 0 0}
+  .lgrid input{padding:11px 10px;font-size:15px}
+  .kv{margin-top:14px;border-top:1px solid var(--sep);padding-top:10px;font-size:14px}
+  .kv div{display:flex;justify-content:space-between;gap:12px;padding:4px 0;color:var(--g1)}
+  .kv div b{font-family:var(--mono);font-weight:600;color:var(--w)}
+  .kv div.big{font-size:17px;padding-top:8px}
+  .kv .warn{display:block;margin-top:8px;padding:10px 12px;border-radius:10px;background:var(--card2);color:var(--w)}
+  .lstrip{position:relative;z-index:3;margin:-4px 0 12px;display:flex;flex-direction:column;gap:6px}
+  .lstrip:empty{display:none}
+  .lstrip div{display:flex;align-items:center;gap:8px;justify-content:center;font-size:13.5px;color:var(--g1);cursor:pointer}
+  .lstrip b{font-family:var(--mono);color:var(--w);font-weight:600}
+
+  .view{display:none}
+  .view.on{display:block;animation:in .42s var(--spring) both}
+  .view.on.fromR{animation-name:inR} .view.on.fromL{animation-name:inL}
+  @keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  @keyframes inR{from{opacity:0;transform:translateX(26px)}to{opacity:1;transform:none}}
+  @keyframes inL{from{opacity:0;transform:translateX(-26px)}to{opacity:1;transform:none}}
+  .stagger>*{animation:in .45s var(--spring) both}
+  .stagger>*:nth-child(2){animation-delay:.05s}
+  .stagger>*:nth-child(3){animation-delay:.1s}
+
+  .group{background:var(--card);border-radius:14px;margin-bottom:14px;overflow:hidden}
+  .group.pad{padding:16px}
+  .ghdr{padding:0 4px 8px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+
+  .strip{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:18px}
+  .hr{flex:1 1 36px;min-width:36px;border-radius:8px;padding:8px 2px 6px;text-align:center;
+    animation:pop .34s var(--spring) both}
+  @keyframes pop{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:none}}
+  .hr .pr{font-family:var(--mono);font-size:12px;font-weight:600;line-height:1.1}
+  .hr .ix{font-size:9.5px;margin-top:3px;font-family:var(--mono);opacity:.55}
+  .hr.full{background:var(--w);color:#000}
+  .hr.half{background:#4A4A4A;color:var(--w)}
+  .hr.free{background:none;border:1px dashed var(--line);color:var(--g3);padding:7px 1px 5px}
+
+  .stepper{display:flex;align-items:center;gap:14px}
+  .stepper button{width:52px;height:52px;border-radius:50%;border:none;background:var(--card2);
+    color:var(--w);font-size:26px;line-height:1;cursor:pointer;font-weight:300;
+    transition:transform .25s var(--spring),background .2s}
+  .stepper button:active{transform:scale(.88);background:var(--line)}
+  .hcount{flex:1;text-align:center}
+  .hcount b{font-family:var(--mono);font-size:40px;font-weight:600;display:block;line-height:1;letter-spacing:-.04em}
+  .hcount span{font-size:12px;color:var(--g2)}
+  .hcount b.bump{animation:bump .34s var(--spring)}
+  @keyframes bump{45%{transform:scale(1.12)}}
+
+  .cap{font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--g2);margin:20px 0 9px;display:block}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{padding:12px 17px;min-height:44px;display:inline-flex;align-items:center;border-radius:999px;border:1px solid var(--line);background:none;
+    color:var(--g1);font-family:var(--sans);font-size:15px;cursor:pointer;
+    transition:transform .2s var(--spring),background .22s,color .22s,border-color .22s}
+  .chip:active{transform:scale(.93)}
+  .chip[aria-pressed="true"]{background:var(--w);border-color:var(--w);color:#000;font-weight:500}
+
+  .when{display:flex;gap:10px}
+  .when label{flex:1;min-width:0}
+  input{width:100%;padding:13px;border-radius:12px;border:1px solid transparent;background:var(--card2);
+    color:var(--w);font-family:var(--mono);font-size:16px;transition:border-color .2s}
+  input.txt{font-family:var(--sans)}
+  input:focus{border-color:var(--g3);outline:none}
+  input::placeholder{color:var(--g2)}
+  textarea{width:100%;height:46vh;padding:13px;border-radius:12px;border:1px solid transparent;
+    background:var(--card2);color:var(--w);font-family:var(--mono);font-size:13px;resize:none}
+  .window{margin-top:10px;text-align:center;font-size:13px;color:var(--g2)}
+  .window b{color:var(--w);font-family:var(--mono);font-weight:500}
+
+  .fsec{padding:18px 16px;border-bottom:1px solid var(--sep)}
+  .fsec.last{border-bottom:none}
+  .fhdr{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
+  .fnote{font-size:12.5px;color:var(--g2);font-family:var(--mono)}
+  .fnote b{color:var(--w);font-weight:500}
+  .bigsum{display:flex;align-items:baseline;gap:9px}
+  .bigsum .v{font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:-.04em;line-height:1}
+  .bigsum .c{font-size:12.5px;color:var(--g2)}
+  .subsum{font-size:13px;color:var(--g2);font-family:var(--mono);margin-top:7px;line-height:1.5}
+  .subsum b{color:var(--g1);font-weight:500}
+  .preview{display:flex;gap:4px;margin-top:20px;padding-top:16px;border-top:1px solid var(--sep)}
+  .pv{flex:1;text-align:center;min-width:0}
+  .pv .c{font-size:10.5px;color:var(--g2);display:block;margin-bottom:5px}
+  .pv .v{font-family:var(--mono);font-weight:600;font-size:15px;display:block;letter-spacing:-.03em}
+  .pv.dim .v{color:var(--g1)}
+  .hint{font-size:12.5px;color:var(--g2);margin-top:12px;text-align:center;min-height:17px}
+
+  .btn{width:100%;padding:16px;border:none;border-radius:14px;background:var(--w);color:#000;
+    font-family:var(--sans);font-weight:600;font-size:16px;letter-spacing:-.01em;cursor:pointer;
+    transition:transform .2s var(--spring),opacity .2s}
+  .btn:active{transform:scale(.98)}
+  .btn:disabled{opacity:.22}
+  .btn.mt{margin-top:12px}
+  .btn.sec{background:var(--card2);color:var(--w)}
+
+  .mhdr{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:14px 16px 10px;background:#101010;position:relative}
+  .mhdr .m{font-size:13px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+  .mhdr .st{font-size:11.5px;color:var(--g2);font-family:var(--mono)}
+  .fltinfo{display:flex;align-items:center;gap:9px;background:var(--card2);border-radius:12px;
+    padding:10px 14px;margin-bottom:10px;font-size:13.5px;color:var(--g1);border:1px solid var(--line)}
+  .fltinfo .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fltinfo button{border:none;background:none;color:var(--g2);font-size:19px;cursor:pointer;padding:0 2px}
+  .offbar{display:flex;align-items:center;gap:10px;background:var(--card2);border-radius:12px;
+    padding:11px 14px;margin-bottom:12px;font-size:13.5px;color:var(--g1);
+    border:1px solid var(--line);animation:in .35s var(--spring) both}
+  .offbar .t{flex:1;min-width:0}
+  .offbar .t b{color:var(--w);font-weight:600}
+  .offbar button{border:1px solid var(--line);background:none;color:var(--w);border-radius:999px;
+    padding:7px 13px;font-size:13px;cursor:pointer;font-family:var(--sans);white-space:nowrap}
+  .offbar button:active{background:var(--w);color:#000}
+  .ent.pending{opacity:.62}
+  .ent.pending .s:after{content:' ⏳';font-size:12px}
+  .editbar{display:flex;align-items:center;gap:10px;background:var(--card2);border-radius:12px;
+    padding:11px 14px;margin-bottom:12px;font-size:14px;border:1px solid var(--line);
+    animation:in .35s var(--spring) both}
+  .editbar .t{flex:1;color:var(--g1);min-width:0}
+  .editbar .t b{color:var(--w);font-weight:600}
+  .editbar button{border:1px solid var(--line);background:none;color:var(--w);border-radius:999px;
+    padding:7px 14px;font-size:13.5px;cursor:pointer;font-family:var(--sans);white-space:nowrap}
+  .editbar button:active{background:var(--w);color:#000}
+  .locked{text-align:center;padding:34px 20px}
+  .locked .ic{font-size:30px;margin-bottom:12px}
+  .locked .t{font-size:18px;font-weight:600;letter-spacing:-.02em}
+  .locked .s{font-size:14px;color:var(--g2);margin:6px 0 20px}
+
+  .hero{padding:22px 18px 18px}
+  .hero .t{font-size:13px;color:var(--g2)}
+  .hero .v{font-family:var(--mono);font-size:40px;font-weight:600;letter-spacing:-.045em;line-height:1.1;margin-top:2px}
+  .hero .s{font-size:12.5px;color:var(--g2);font-family:var(--mono);margin-top:6px}
+  .hero .btn{margin-top:16px}
+
+  .row{display:flex;align-items:center;gap:12px;padding:14px 16px;position:relative}
+  .row+.row:before{content:'';position:absolute;top:0;left:16px;right:0;height:1px;background:var(--sep)}
+  .row .n{flex:1;min-width:0}
+  .row .n .nm{font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .n .sub{font-size:12px;color:var(--g2);font-family:var(--mono);margin-top:2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .b{font-family:var(--mono);font-weight:600;font-size:18px;letter-spacing:-.03em}
+  .row .n .sub.wrap{white-space:normal}
+  .row.settled .b{color:var(--g3)}
+  .row.kassa{background:#181818}
+  .row.kassa .nm{font-weight:600}
+  .row .b.inv{background:var(--w);color:#000;border-radius:8px;padding:3px 10px}
+  .badge{background:var(--w);color:#000;border-radius:6px;padding:1px 7px;font-size:11.5px;white-space:nowrap;
+    font-weight:600;font-family:var(--sans);letter-spacing:.02em}
+  .ent.debt .s:after{content:' •';color:var(--w)}
+  .pill{border:1px solid var(--line);background:none;color:var(--w);border-radius:999px;
+    padding:11px 15px;min-height:44px;display:inline-flex;align-items:center;font-size:13px;cursor:pointer;font-family:var(--sans);white-space:nowrap;
+    transition:transform .2s var(--spring),background .2s,color .2s}
+  .pill:active{transform:scale(.93);background:var(--w);color:#000}
+  .tag{font-size:10px;color:var(--g2);border:1px solid var(--line);border-radius:5px;
+    padding:1px 5px;margin-left:7px;vertical-align:2px;letter-spacing:.04em}
+
+  .drow{display:flex;align-items:center;gap:12px;padding:15px 16px;position:relative;cursor:pointer}
+  .drow+.dgames+.drow:before,.drow~.drow:before{content:'';position:absolute;top:0;left:16px;right:0;
+    height:1px;background:var(--sep)}
+  .drow .n{flex:1;min-width:0}
+  .drow .n .nm{font-size:16.5px;font-weight:500}
+  .drow .n .sub{font-size:12px;color:var(--g2);margin-top:2px}
+  .drow .b{font-family:var(--mono);font-weight:600;font-size:17px;letter-spacing:-.03em}
+  .drow .chev{color:var(--g2);font-size:13px;transition:transform .35s var(--spring)}
+  .drow.open .chev{transform:rotate(90deg)}
+  .dgames{overflow:hidden;max-height:0;transition:max-height .42s var(--spring)}
+  .dgames.open{max-height:6000px}
+  .dgin{padding:2px 16px 16px}
+  .grow{display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--sep)}
+  .grow .gi{flex:1;min-width:0}
+  .grow .gd{font-size:14px}
+  .grow .gs{font-size:11.5px;color:var(--g2);margin-top:2px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grow .ga{font-weight:600;font-size:14.5px}
+  .seg{display:flex;gap:6px;margin-bottom:14px}
+  .seg button{flex:1;padding:13px 4px;min-height:44px;border-radius:10px;border:1px solid var(--sep);background:none;
+    color:var(--g2);font-family:var(--sans);font-size:13.5px;cursor:pointer;transition:all .25s}
+  .seg button[aria-pressed="true"]{color:#000;background:var(--w);border-color:var(--w);font-weight:600}
+  .stats{display:flex;gap:8px}
+  .st{flex:1;background:var(--card2);border-radius:12px;padding:13px 8px;text-align:center}
+  .st .v{font-family:var(--mono);font-weight:600;font-size:17px;letter-spacing:-.03em}
+  .st .c{font-size:10.5px;color:var(--g2);margin-top:3px}
+
+  .entwrap{position:relative;overflow:hidden}
+  .entwrap .acts{position:absolute;top:0;right:0;bottom:0;display:flex;align-items:stretch}
+  .entwrap .acts button{border:none;background:#1F1F1F;color:var(--w);font-family:var(--sans);
+    font-size:13.5px;width:74px;cursor:pointer;border-left:1px solid var(--sep)}
+  .entwrap .acts button.d{background:var(--w);color:#000;font-weight:600}
+  .ent{position:relative;cursor:pointer;padding:14px 16px;display:flex;align-items:center;gap:13px;
+    background:var(--card);transition:transform .32s var(--spring);touch-action:pan-y;z-index:1}
+  .entwrap.open .ent{transform:translateX(-148px)}
+  .ent+.ent:before,.detail+.ent:before{content:'';position:absolute;top:0;left:16px;right:0;height:1px;background:var(--sep)}
+  .ent .d{flex:0 0 auto;text-align:center;min-width:38px}
+  .ent .d b{font-size:19px;font-weight:600;display:block;line-height:1;letter-spacing:-.03em}
+  .ent .d span{font-size:10px;color:var(--g2);text-transform:uppercase;letter-spacing:.04em}
+  .ent .i{flex:1;min-width:0}
+  .ent .i .top{font-size:15.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ent .i .sub{font-size:12px;color:var(--g2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ent .s{font-family:var(--mono);font-weight:600;font-size:15px;letter-spacing:-.03em}
+  .ent.out .s{color:var(--g1)}
+  .ent .chev{color:var(--g2);font-size:13px;transition:transform .35s var(--spring)}
+  .ent.open .chev{transform:rotate(90deg)}
+  .detail{overflow:hidden;max-height:0;transition:max-height .4s var(--spring)}
+  .detail.open{max-height:3000px}
+  .detail .lnk{line-height:1.5}
+  .detail .in{padding:0 16px 16px 24px;font-size:13px;color:var(--g1);font-family:var(--mono)}
+  .detail .in div{padding:3px 0}
+  .rm{margin-top:10px;background:none;border:1px solid var(--line);color:var(--g1);
+    border-radius:10px;padding:11px 16px;min-height:44px;font-size:13px;cursor:pointer;font-family:var(--sans)}
+  .rm:active{background:var(--w);color:#000}
+  .empty{color:var(--g2);font-size:14.5px;padding:26px 16px;text-align:center;line-height:1.55}
+  .empty .big{display:block;font-size:17px;color:var(--w);font-weight:600;margin-bottom:7px}
+  .empty .hintline{display:block;margin-top:12px;font-size:13px}
+  .sk{padding:14px 16px;display:flex;align-items:center;gap:13px;position:relative}
+  .sk+.sk:before{content:'';position:absolute;top:0;left:16px;right:0;height:1px;background:var(--sep)}
+  .sk i{display:block;border-radius:7px;background:linear-gradient(90deg,#171717,#242424,#171717);
+    background-size:220% 100%;animation:shim 1.5s linear infinite}
+  .sk .a{width:38px;height:34px}
+  .sk .b{flex:1}
+  .sk .b i:first-child{height:13px;width:62%;margin-bottom:8px}
+  .sk .b i:last-child{height:10px;width:40%}
+  .sk .c{width:58px;height:15px}
+  @keyframes shim{to{background-position:-220% 0}}
+  @media (prefers-reduced-motion:reduce){ .sk i{animation:none} }
+
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);opacity:0;visibility:hidden;
+    transition:opacity .35s var(--spring),visibility .35s;z-index:40}
+  .scrim.on{opacity:1;visibility:visible}
+  .sheet{position:fixed;left:0;right:0;bottom:0;z-index:50;max-width:540px;margin:0 auto;
+    background:#161616;border-radius:20px 20px 0 0;
+    padding:10px 18px calc(26px + env(safe-area-inset-bottom));
+    transform:translateY(101%);visibility:hidden;
+    transition:transform .48s var(--spring),visibility .48s;
+    max-height:86vh;max-height:calc(var(--tg-viewport-stable-height,100dvh)*.86);
+    overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .sheet.on{transform:none;visibility:visible}
+  .grab{width:36px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 16px}
+  .sheet h2{font-size:22px;font-weight:700;letter-spacing:-.025em;margin:0 0 3px}
+  .sheet .lead{font-size:14px;color:var(--g2);margin-bottom:16px}
+  .quick{display:flex;gap:8px;margin-top:10px}
+  .quick button{flex:1;padding:10px 4px;border-radius:11px;border:1px solid var(--line);background:none;
+    color:var(--w);font-family:var(--mono);font-size:13px;cursor:pointer}
+  .quick button:active{background:var(--w);color:#000}
+  .note{font-size:12.5px;color:var(--g2);margin-top:10px;line-height:1.4}
+
+  .lrow{display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--sep);font-size:16px}
+  .lrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lrow.off .nm{color:var(--g3)}
+  .lrow .me{font-size:12px;color:var(--g2);border:1px solid var(--line);border-radius:8px;padding:5px 10px;
+    cursor:pointer;background:none;font-family:var(--sans)}
+  .lrow .me.on{color:#000;background:var(--w);border-color:var(--w)}
+  .del{background:none;border:none;color:var(--g2);font-size:20px;cursor:pointer;
+    min-width:44px;min-height:44px;line-height:1}
+  .ren{background:none;border:none;color:var(--g2);font-size:16px;cursor:pointer;
+    min-width:40px;min-height:44px;line-height:1}
+  .ren:active{color:var(--w)}
+  .addrow{display:flex;gap:8px;margin-top:12px}
+  .addrow input{flex:1}
+  .addrow button{padding:0 18px;border-radius:12px;border:1px solid var(--line);background:none;
+    color:var(--w);cursor:pointer;font-family:var(--sans);font-size:15px}
+
+  .toast{position:fixed;left:50%;bottom:30px;transform:translate(-50%,24px) scale(.96);z-index:60;
+    background:var(--w);color:#000;border-radius:999px;padding:12px 22px;font-size:14.5px;font-weight:500;
+    opacity:0;pointer-events:none;transition:opacity .3s,transform .4s var(--spring);
+    box-shadow:0 8px 28px rgba(0,0,0,.5);max-width:88vw;text-align:center}
+  .toast.on{opacity:1;transform:translate(-50%,0) scale(1)}
+
+  #boot{position:fixed;inset:0;background:var(--bg);z-index:70;display:flex;align-items:center;
+    justify-content:center;flex-direction:column;gap:14px;transition:opacity .4s,visibility .4s}
+  #boot.off{opacity:0;visibility:hidden}
+  #boot .dot{width:9px;height:9px;border-radius:50%;background:var(--w);animation:pulse 1.1s infinite}
+  @keyframes pulse{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+  #boot .t{font-size:14px;color:var(--g2)}
+  .gate{width:100%;max-width:340px;padding:0 20px;text-align:center}
+  .gate .ic{font-size:30px;margin-bottom:12px}
+  #boot .gate .t{font-size:19px;font-weight:600;letter-spacing:-.02em;color:var(--w)}
+  .gate .s{font-size:14px;color:var(--g2);margin:8px 0 22px;line-height:1.55}
+  .gate .s .num{display:inline-block;margin-top:10px;color:var(--g1);font-size:12.5px}
+  .lrow .un{color:var(--g2);font-size:13px}
+  #gear.dot{position:relative}
+  #gear.dot:after{content:'';position:absolute;top:5px;right:5px;width:9px;height:9px;border-radius:50%;
+    background:var(--w);box-shadow:0 0 0 2px var(--bg)}
+
+
+  /* ===== ЖИВОЙ СЛОЙ ===== */
+
+  /* афиша: главное число над входом */
+  .board{position:relative;overflow:hidden;background:var(--card);border-radius:16px;
+    padding:20px 18px 16px;margin-bottom:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+  .bcap{font-size:11.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--g2);text-align:center}
+  .bval{display:flex;justify-content:center;font-family:var(--mono);font-size:44px;font-weight:600;
+    letter-spacing:-.045em;line-height:1.05;margin-top:7px;text-shadow:0 0 28px rgba(255,255,255,.2)}
+  .bstats{display:flex;margin-top:16px;border-top:1px solid var(--sep);padding-top:13px}
+  .bstats .b1{flex:1;text-align:center;min-width:0;position:relative}
+  .bstats .b1+.b1:before{content:'';position:absolute;left:0;top:2px;bottom:2px;width:1px;background:var(--sep)}
+  .bstats .v{font-family:var(--mono);font-weight:600;font-size:16px;letter-spacing:-.03em;display:block}
+  .bstats .c{font-size:10.5px;color:var(--g2);margin-top:3px;display:block}
+  .bstats .b1.debt .v{background:var(--w);color:#000;border-radius:6px;padding:1px 7px;display:inline-block}
+  .board .bbtns{display:flex;gap:8px;margin-top:15px}
+  .board .bbtns .btn{flex:1;padding:14px 8px;font-size:15px}
+  .board.fresh .bval{opacity:.35}
+  .board.fresh .bstats{opacity:.35}
+  .firstrun{padding:22px 18px;text-align:center}
+  .firstrun .t{font-size:17px;font-weight:600;letter-spacing:-.02em}
+  .firstrun .s{font-size:14px;color:var(--g2);margin-top:8px;line-height:1.55}
+  .firstrun .steps{text-align:left;margin:16px auto 0;max-width:330px;font-size:13.5px;color:var(--g1)}
+  .firstrun .steps div{padding:7px 0 7px 26px;position:relative}
+  .firstrun .steps b{position:absolute;left:0;top:7px;width:18px;height:18px;border-radius:50%;
+    background:var(--w);color:#000;font-size:11px;font-weight:700;display:flex;
+    align-items:center;justify-content:center}
+
+  /* липкая шапка при прокрутке */
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:35;max-width:540px;margin:0 auto;
+    display:flex;align-items:center;gap:10px;padding:11px 16px calc(11px);
+    background:rgba(0,0,0,.72);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    border-bottom:1px solid var(--sep);
+    transform:translateY(-102%);transition:transform .42s var(--spring)}
+  .topbar.on{transform:none}
+  .topbar .tt{flex:1;font-size:13px;color:var(--g2);letter-spacing:.06em;text-transform:uppercase}
+  .topbar .tv{font-family:var(--mono);font-weight:600;font-size:17px;letter-spacing:-.03em}
+  .live{width:7px;height:7px;border-radius:50%;background:var(--w);flex:0 0 7px;
+    box-shadow:0 0 0 0 rgba(255,255,255,.6);animation:beat 2.4s ease-out infinite}
+  @keyframes beat{0%{box-shadow:0 0 0 0 rgba(255,255,255,.5);opacity:1}
+    70%{box-shadow:0 0 0 9px rgba(255,255,255,0);opacity:.65}100%{opacity:1}}
+
+  /* перекидные цифры */
+  .odo{display:inline-flex;align-items:flex-start}
+  .odo .col{display:inline-block;height:1em;overflow:hidden;line-height:1;vertical-align:top}
+  .odo .reel{display:flex;flex-direction:column;transition:transform .8s cubic-bezier(.16,1,.3,1)}
+  .odo .reel span{height:1em;line-height:1;display:block}
+  .odo .ch{display:inline-block;line-height:1}
+  .group{box-shadow:inset 0 1px 0 rgba(255,255,255,.045)}
+
+  @media (prefers-reduced-motion:reduce){
+    .live{animation:none}
+    .odo .reel{transition:none}
+  }
+
+  /* зерно: текстура, а не движение — черный становится материалом */
+  .grain{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:.032;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+  /* блик проходит только по афише — живой центр остается один */
+  .bsweep{position:absolute;top:0;bottom:0;width:45%;pointer-events:none;z-index:1;
+    background:linear-gradient(102deg,transparent,rgba(255,255,255,.07) 46%,transparent);
+    animation:bsw 9s ease-in-out infinite}
+  @keyframes bsw{0%{left:-50%}60%,100%{left:120%}}
+
+  /* цифра меняется — афиша коротко вспыхивает */
+  .board.flash:after{content:'';position:absolute;inset:0;pointer-events:none;z-index:4;
+    background:radial-gradient(70% 90% at 50% 42%,rgba(255,255,255,.14),transparent 70%);
+    animation:flash .9s var(--spring) forwards}
+  @keyframes flash{0%{opacity:0}22%{opacity:1}100%{opacity:0}}
+
+  /* карточки поднимаются, когда входят в экран */
+  .reveal{opacity:0;transform:translateY(16px)}
+  .reveal.seen{opacity:1;transform:none;
+    transition:opacity .55s var(--spring),transform .55s var(--spring)}
+
+  /* по кнопке записи проходит свет в момент успеха */
+  .btn.done{position:relative;overflow:hidden}
+  .btn.done:after{content:'';position:absolute;top:0;bottom:0;width:44%;
+    background:linear-gradient(100deg,transparent,rgba(255,255,255,.75),transparent);
+    animation:btnsw .75s var(--spring) forwards}
+  @keyframes btnsw{from{left:-50%}to{left:130%}}
+
+  .tabs .glide{box-shadow:0 1px 3px rgba(0,0,0,.6),0 0 22px rgba(255,255,255,.05)}
+
+  /* неоновые трубки над и под главным числом */
+  .board{border:1px solid rgba(255,255,255,.12);animation:neon 5s ease-in-out infinite}
+  @keyframes neon{
+    0%,100%{border-color:rgba(255,255,255,.10);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 0 20px rgba(255,255,255,.035), inset 0 0 30px rgba(255,255,255,.015)}
+    50%{border-color:rgba(255,255,255,.26);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.07), 0 0 42px rgba(255,255,255,.10), inset 0 0 44px rgba(255,255,255,.05)}}
+
+  .tube{position:absolute;left:0;right:0;height:1px;pointer-events:none;z-index:2;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.3) 14%,
+      rgba(255,255,255,.85) 50%,rgba(255,255,255,.3) 86%,transparent);
+    box-shadow:0 0 9px rgba(255,255,255,.45);animation:glow 3.4s ease-in-out infinite}
+  .tube.t{top:0} .tube.b{bottom:0;animation-delay:1.7s}
+  @keyframes glow{0%,100%{opacity:.3}50%{opacity:1}}
+
+  .spark{position:absolute;width:78px;height:1px;pointer-events:none;z-index:3;
+    background:linear-gradient(90deg,transparent,#fff,transparent);
+    box-shadow:0 0 14px 2px rgba(255,255,255,.55)}
+  .spark.s1{top:0;animation:runR 6s linear infinite}
+  .spark.s2{bottom:0;animation:runL 6s linear infinite;animation-delay:3s}
+  @keyframes runR{0%{left:-80px;opacity:0}8%{opacity:1}92%{opacity:1}100%{left:100%;opacity:0}}
+  @keyframes runL{0%{right:-80px;opacity:0}8%{opacity:1}92%{opacity:1}100%{right:100%;opacity:0}}
+
+  /* заставка */
+  #boot .word{display:flex;gap:3px}
+  #boot .word span{font-size:26px;font-weight:700;letter-spacing:.22em;
+    animation:letter .5s var(--spring) both}
+  @keyframes letter{from{opacity:0;transform:translateY(14px) rotateX(-70deg)}to{opacity:1;transform:none}}
+
+  @media (prefers-reduced-motion:reduce){
+    .board,.tube,.bsweep{animation:none}
+    .spark,.bsweep{display:none}
+    .reveal{opacity:1;transform:none}
+    .board.flash:after{display:none}
+  }
+  :focus-visible{outline:2px solid var(--w);outline-offset:2px}
+  @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}}
+</style>
+</head>
+<body>
+
+<div class="grain"></div>
+
+<div class="topbar" id="topbar"><span class="live"></span><span class="tt">Касса к передаче</span><span class="tv" id="topKassa">—</span></div>
+
+<div id="boot"><div class="word" id="bootWord"></div><div class="t">Загружаю данные…</div></div>
+
+<header>
+  <div>
+    <h1>Учет</h1>
+    <div class="sub">3 часа по 100 · дальше по 50</div>
+  </div>
+  <div class="hbtns">
+    <button class="icn" id="sync" aria-label="Обновить">↻</button>
+    <button class="icn" id="gear" aria-label="Списки">⚙</button>
+  </div>
+</header>
+
+<div class="board" id="board">
+  <span class="bsweep"></span>
+  <span class="tube t"></span><span class="tube b"></span>
+  <span class="spark s1"></span><span class="spark s2"></span>
+  <div class="lstrip" id="liveStrip"></div>
+  <div class="bcap">Касса · не роздано</div>
+  <div class="bval odo" id="boardVal"></div>
+  <div class="bstats" id="boardStats"></div>
+  <div class="bbtns w-only">
+    <button class="btn" data-inc="1">Пришла оплата</button>
+    <button class="btn sec" data-exp="1">Выдать кассу</button>
+  </div>
+</div>
+
+<div class="offbar" id="offbar" style="display:none"></div>
+
+<div class="mode" id="mode"></div>
+
+<div class="tabs" role="tablist">
+  <div class="glide" id="glide"></div>
+  <button role="tab" data-v="new" aria-selected="true">Смена</button>
+  <button role="tab" data-v="live" aria-selected="false">Таймер</button>
+  <button role="tab" data-v="sum" aria-selected="false">Итоги</button>
+  <button role="tab" data-v="hist" aria-selected="false">История</button>
+</div>
+
+<section class="view on" id="v-new">
+  <div class="editbar" id="editBar" style="display:none">
+    <span class="t">Правка смены <b id="editWhen"></b></span>
+    <button id="editCancel">Отменить</button>
+  </div>
+  <div class="group w-only" id="form">
+    <div class="fsec">
+      <div class="fhdr"><span class="lbl">Когда</span><span class="fnote" id="window"></span></div>
+      <div class="strip" id="strip"></div>
+      <div class="stepper">
+        <button id="minus" aria-label="Меньше часов">−</button>
+        <div class="hcount"><b id="hval">6</b><span id="hword">часов</span></div>
+        <button id="plus" aria-label="Больше часов">+</button>
+      </div>
+      <div class="when">
+        <label><input type="date" id="date"></label>
+        <label><input type="time" id="time" step="300"></label>
+      </div>
+      <span class="cap">Паузы — не оплачиваются, сдвигают конец</span>
+      <div id="pauseList"></div>
+      <button class="pill" id="pauseAdd" type="button" style="margin-top:8px">+ Пауза</button>
+    </div>
+
+    <div class="fsec">
+      <div class="fhdr"><span class="lbl">Кто</span></div>
+      <div class="chips" id="wchips"></div>
+      <div id="workersBox" style="display:none">
+        <span class="cap" id="workersCap">Кто во сколько работал — пусто = вся смена</span>
+        <div id="workersList"></div>
+      </div>
+      <span class="cap">Кастомеры — счет делится по времени</span>
+      <div class="chips" id="cchips"></div>
+      <div id="playersBox" style="display:none">
+        <span class="cap" id="playersCap">Кто во сколько сидел — пусто = вся смена</span>
+        <div id="playersList"></div>
+        <div id="payerBox"><span class="cap">Один платит за всех, кто сидел с ним</span>
+          <div class="chips" id="payerChips"></div></div>
+      </div>
+    </div>
+
+    <div class="fsec last">
+      <div class="fhdr"><span class="lbl">Итог</span></div>
+      <div class="bigsum"><span class="v num" id="pvTotal">—</span><span class="c">за смену</span></div>
+      <div class="subsum" id="pvLine">—</div>
+      <label class="field" style="margin-top:16px"><span>Скидка, $</span>
+        <input type="text" id="discount" inputmode="decimal" placeholder="0" autocomplete="off"></label>
+      <input type="text" class="txt" id="note" placeholder="Комментарий к смене — необязательно"
+             autocomplete="off" maxlength="200" style="margin-top:10px">
+      <div class="hint" id="hint"></div>
+      <button class="btn" id="save">Записать смену</button>
+    </div>
+  </div>
+  <div class="group" id="firstRun" style="display:none">
+    <div class="firstrun">
+      <div class="t">Здесь считаются смены</div>
+      <div class="s">Тариф уже зашит: первые три часа по сто, дальше по полтиннику.</div>
+      <div class="steps">
+        <div><b>1</b>Поставь часы, дату и время начала</div>
+        <div><b>2</b>Отметь, кто работал и у кого</div>
+        <div><b>3</b>Половина уйдет в кассу, половина рабочим</div>
+      </div>
+    </div>
+  </div>
+  <div class="group" id="lockCard" style="display:none">
+    <div class="locked">
+      <div class="ic">🔒</div>
+      <div class="t">Только просмотр</div>
+      <div class="s">Смены записывает владелец учета.<br>Итоги и история открыты полностью.</div>
+      <button class="btn sec" id="unlock2">Войти</button>
+    </div>
+  </div>
+</section>
+
+<section class="view" id="v-live">
+  <div class="group pad w-only" id="liveNew">
+    <span class="lbl">Новая смена</span>
+    <span class="cap">Операторы</span>
+    <div class="chips" id="liveWChips"></div>
+    <button class="btn mt" id="liveStart">Начать смену</button>
+    <div class="note">Время старта пишется в базу, по Камбодже. Можно закрыть приложение или открыть
+      с другого телефона — таймер идёт. Игроков можно добавить по ходу или в конце.</div>
+  </div>
+  <div id="liveList"></div>
+  <div class="group" id="liveEmpty" style="display:none"><div class="empty">
+    <span class="big">Сейчас смен нет</span><span id="liveEmptyHint"></span></div></div>
+</section>
+
+<section class="view" id="v-sum">
+  <div class="stagger">
+    <div>
+      <div class="ghdr"><span class="lbl">Ещё не роздано</span></div>
+      <div class="group" id="workersCard"></div>
+    </div>
+    <div id="debtBlock" style="display:none">
+      <div class="ghdr"><span class="lbl">Долги игроков</span></div>
+      <div class="group" id="debtCard"></div>
+    </div>
+    <div>
+      <div class="ghdr"><span class="lbl">Сводка</span></div>
+      <div class="group pad">
+        <div class="seg" id="periodSeg">
+          <button data-p="w" aria-pressed="false">7 дней</button>
+          <button data-p="m" aria-pressed="true">30 дней</button>
+          <button data-p="a" aria-pressed="false">Всё</button>
+        </div>
+        <div class="stats" id="stats"></div>
+        <span class="cap">По кастомерам</span>
+        <div id="custTotals"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="view" id="v-hist">
+  <div class="ghdr"><span class="lbl">Все записи</span>
+    <span style="display:flex;gap:7px">
+      <button class="pill" id="fltBtn">Фильтр</button>
+      <button class="pill" id="copy">Отчет</button>
+    </span></div>
+  <div id="fltInfo" style="display:none"></div>
+  <div class="group" id="list"></div>
+</section>
+
+<div class="scrim" id="scrim"></div>
+
+<div class="sheet" id="authSheet" role="dialog" aria-modal="true">
+  <div class="grab"></div>
+  <h2>Вход для владельца</h2>
+  <div class="lead">Почта и пароль от учетной записи. Остальные пользуются без входа — им всё видно.</div>
+  <span class="cap" style="margin-top:0">Почта</span>
+  <input type="email" class="txt" id="email" autocomplete="username" placeholder="you@mail.com">
+  <span class="cap">Пароль</span>
+  <input type="password" class="txt" id="pass" autocomplete="current-password" placeholder="••••••••">
+  <button class="btn mt" id="doLogin">Войти</button>
+  <button class="btn sec mt" id="authCancel">Отмена</button>
+</div>
+
+<div class="sheet" id="opSheet" role="dialog" aria-modal="true">
+  <div class="grab"></div>
+  <h2 id="opTitle">Выплата</h2>
+  <div class="lead" id="opLead"></div>
+  <div class="note" id="opWhy" style="margin:-4px 0 14px;line-height:1.5"></div>
+  <span class="cap" style="margin-top:0" id="opAmtCap">Сумма</span>
+  <input type="text" id="opAmt" inputmode="decimal" placeholder="0">
+  <div class="quick" id="opQuick"></div>
+  <div class="note" id="opSplit"></div>
+  <span class="cap">Дата</span>
+  <input type="date" id="opDate">
+  <span class="cap">Заметка</span>
+  <input type="text" class="txt" id="opNote" placeholder="Кому отдал, необязательно" autocomplete="off">
+  <button class="btn mt" id="opSave">Записать</button>
+  <button class="btn sec mt" id="opCancel">Отмена</button>
+</div>
+
+<div class="sheet" id="fltSheet" role="dialog" aria-modal="true">
+  <div class="grab"></div>
+  <h2>Фильтр истории</h2>
+  <div class="lead" id="fltLead"></div>
+  <span class="cap" style="margin-top:0">Что показывать</span>
+  <div class="seg" id="fType">
+    <button data-t="all" aria-pressed="true">Все</button>
+    <button data-t="shift" aria-pressed="false">Смены</button>
+    <button data-t="money" aria-pressed="false">Деньги</button>
+  </div>
+  <span class="cap">Рабочий</span>
+  <div class="chips" id="fWork"></div>
+  <span class="cap">Кастомер</span>
+  <div class="chips" id="fCust"></div>
+  <span class="cap">Оплата</span>
+  <div class="seg" id="fDebt">
+    <button data-d="0" aria-pressed="true">Любая</button>
+    <button data-d="1" aria-pressed="false">Только долги</button>
+  </div>
+  <button class="btn mt" id="fltApply">Показать</button>
+  <button class="btn sec mt" id="fltReset">Сбросить всё</button>
+</div>
+
+<div class="sheet" id="setSheet" role="dialog" aria-modal="true">
+  <div class="grab"></div>
+  <h2>Списки</h2>
+  <div class="lead" id="setLead"></div>
+  <span class="cap" style="margin-top:0">Рабочие</span>
+  <div id="wlist"></div>
+  <div class="addrow w-only"><input type="text" class="txt" id="waddi" placeholder="Новый рабочий" autocomplete="off"><button id="wadd">Добавить</button></div>
+  <span class="cap">Кастомеры</span>
+  <div id="clist"></div>
+  <div class="addrow w-only"><input type="text" class="txt" id="caddi" placeholder="Новый кастомер" autocomplete="off"><button id="cadd">Добавить</button></div>
+  <div class="w-only own-only">
+    <span class="cap">Доступ через Telegram</span>
+    <div id="mlist"></div>
+    <div class="note">Учет видят только те, кого ты пустил. Новый человек открывает учет в боте — запрос появляется здесь, а тебе приходит сообщение.<br>«Правка» — человек сможет записывать и править смены, оплаты и списки. Этот список доступа меняешь только ты.</div>
+  </div>
+  <span class="cap">Выгрузка</span>
+  <button class="btn sec" id="dlCsv">Скачать таблицу (.csv)</button>
+  <button class="btn sec mt" id="dlJson">Скачать копию (.json)</button>
+  <div class="note" id="dbNote"></div>
+  <button class="btn mt" id="tryNext">Вернуться в основной учёт</button>
+  <button class="btn sec mt" id="setClose">Готово</button>
+</div>
+
+<div class="sheet" id="nameSheet" role="dialog" aria-modal="true">
+  <div class="grab"></div>
+  <h2>Новое имя</h2>
+  <div class="lead">Старые смены останутся привязаны к этому человеку.</div>
+  <input type="text" class="txt" id="nameInp" autocomplete="off" maxlength="60">
+  <button class="btn mt" id="nameSave">Сохранить</button>
+  <button class="btn sec mt" id="nameCancel">Отмена</button>
+</div>
+
+<div class="sheet" id="textSheet" role="dialog" aria-modal="true">
+  <div class="grab"></div>
+  <h2 id="textTitle">Скопируй вручную</h2>
+  <div class="lead">Выдели текст и скопируй — автоматически не получилось.</div>
+  <textarea id="textBody" readonly></textarea>
+  <button class="btn sec mt" id="textClose">Готово</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
+<script>
+/* ======================= НАСТРОЙКИ ======================= */
+const SUPABASE_URL = 'https://hhpccssygoptrlipdjnx.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_wwqsa5n-i8kZL5_uaCr6QA_UW53PtS6';
+
+const mem={};
+const safeStorage={
+  getItem:k=>{ try{ return localStorage.getItem(k); }catch(e){ return k in mem?mem[k]:null; } },
+  setItem:(k,v)=>{ try{ localStorage.setItem(k,v); }catch(e){ mem[k]=v; } },
+  removeItem:k=>{ try{ localStorage.removeItem(k); }catch(e){ delete mem[k]; } }
+};
+const sb = window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{
+  auth:{persistSession:true,autoRefreshToken:true,storage:safeStorage}
+});
+
+/* ======================= TELEGRAM ======================= */
+// Внутри Telegram есть initData; в обычном браузере его нет — тогда работаем как сайт.
+const TG = (window.Telegram && Telegram.WebApp && Telegram.WebApp.initData) ? Telegram.WebApp : null;
+const tgv = v => !!TG && TG.isVersionAtLeast(v);
+const tgTry = f => { try{ f(); }catch(e){} };
+if(TG){
+  TG.ready(); TG.expand();
+  if(tgv('6.9')) tgTry(()=>TG.setHeaderColor('#000000'));
+  if(tgv('6.1')) tgTry(()=>TG.setBackgroundColor('#000000'));
+  if(tgv('7.10')) tgTry(()=>TG.setBottomBarColor('#000000'));
+  // свайп вниз в шторках и по записям не должен сворачивать приложение
+  if(tgv('7.7')) tgTry(()=>TG.disableVerticalSwipes());
+  if(tgv('6.1')) TG.BackButton.onClick(()=>{
+    if(document.getElementById('nameSheet').classList.contains('on')) endName(null);
+    else closeSheets();
+  });
+}
+function syncBack(){
+  if(!tgv('6.1')) return;
+  if(document.querySelector('.sheet.on')) TG.BackButton.show(); else TG.BackButton.hide();
+}
+// confirm() в разных клиентах Telegram ведет себя по-разному — берем родное окно Telegram
+function ask(msg){
+  return new Promise(function(res){
+    if(tgv('6.2')){ try{ TG.showConfirm(msg,ok=>res(!!ok)); return; }catch(e){} }
+    res(confirm(msg));
+  });
+}
+async function copyText(txt){
+  try{ await navigator.clipboard.writeText(txt); return true; }catch(e){}
+  try{
+    const ta=document.createElement('textarea');
+    ta.value=txt; ta.setAttribute('readonly',''); ta.style.cssText='position:fixed;top:0;left:0;opacity:0';
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0,txt.length);
+    const ok=document.execCommand('copy'); ta.remove(); return ok;
+  }catch(e){ return false; }
+}
+function showText(title,txt){
+  document.getElementById('textTitle').textContent=title;
+  document.getElementById('textBody').value=txt;
+  openSheet('textSheet');
+}
+
+/* ======================= СОСТОЯНИЕ ======================= */
+let S={workers:[],customers:[],shifts:[],ops:[],live:[]};
+let user=null, isOwner=false, canWrite=false, locked=true;
+let hours=6, selW=[], selC=[], period='m', opCtx=null, openId=null, curTab=0, editId=null, editPaid={}, editAmt={};
+let shiftSaving=false, opSaving=false;   // идет запись — второй тап и перерисовка не откроют кнопку
+let booting=true, openDebt=null;
+const skeleton=n=>Array(n).fill(
+  '<div class="sk"><i class="a"></i><div class="b"><i></i><i></i></div><i class="c"></i></div>').join('');
+
+/* ======================= РАСЧЕТ ======================= */
+// С 16 августа 2026 бесплатного 4-го часа больше нет: после 3 часов сразу по 50.
+// Смены с более ранней датой считаются по старому тарифу — уже посчитанное не меняется.
+const FREE_HOUR_UNTIL='2026-08-16';
+const hasFreeHour=d=> !d || String(d) < FREE_HOUR_UNTIL;
+const totalFor=(h,d)=> h<=0 ? 0
+  : h<=3 ? 100*h
+  : (hasFreeHour(d) ? 300+50*(h-4) : 300+50*(h-3));
+const priceOfHour=(i,d)=> i<=3 ? 100 : (hasFreeHour(d) && i===4 ? 0 : 50);
+// Скидка в $ вычитается из суммы по тарифу, и уже остаток делится на кассу, операторов и игроков.
+// Пауза не оплачивается: часы — это только игра, тариф идет сквозной.
+function calc(h,nw,nc,d,discount){
+  const full=totalFor(h,d), disc=Math.min(Math.max(Number(discount)||0,0),full);
+  const total=full-disc, kassa=total/2, pool=total/2;
+  return {full,discount:disc,total,kassa,perWorker:nw?pool/nw:0,perCustomer:nc?total/nc:0};
+}
+// Отыгранное время → часы к оплате: остаток 30 минут и больше — вверх, меньше — вниз.
+// Меньше 30 минут за всю смену — 0 часов, такую смену не записываем.
+function paidHours(sec){
+  const min=Math.floor(Math.max(0,sec)/60);
+  return Math.floor(min/60)+(min%60>=30?1:0);
+}
+function pauseText(min){
+  const h=Math.floor(min/60), m=min%60;
+  return (h?h+' ч':'')+(h&&m?' ':'')+(m?m+' мин':'');
+}
+function money(v){
+  const r=Math.round(Number(v)*100)/100;
+  const s=String(Math.abs(r)).replace('.',',').split(',');
+  return (r<0?'−':'')+s[0].replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0')+(s[1]?','+s[1]:'')+'\u00a0$';
+}
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function hourWord(n){const a=n%10,b=n%100;
+  if(a===1&&b!==11)return 'час'; if(a>=2&&a<=4&&(b<12||b>14))return 'часа'; return 'часов';}
+const hhmm=t=> t?String(t).slice(0,5):'';
+// конец смены: начало + часы игры + пауза (минутами)
+function endTime(t,h,pauseMin){
+  if(!t) return '';
+  const p=hhmm(t).split(':'), m=(+p[0])*60+(+p[1])+h*60+(pauseMin||0);
+  const d=Math.floor(m/1440), mm=((m%1440)+1440)%1440;
+  return String(Math.floor(mm/60)).padStart(2,'0')+':'+String(mm%60).padStart(2,'0')+(d?' +'+d+'д':'');
+}
+const shiftEnd=s=> endTime(s.start_time,s.hours,s.pause_min);
+const MON=['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+const dayText=ds=>{ const p=String(ds).split('-'); return Number(p[2])+' '+MON[Number(p[1])-1]; };
+
+// Время учета — по Камбодже (Asia/Phnom_Penh, UTC+7 круглый год, без перевода часов),
+// как бы ни был настроен телефон. Часы сверяем с сервером, чтобы таймеры шли одинаково.
+let clockOff=0;
+const nowMs=()=>Date.now()+clockOff;
+const KH_OFF=7*3600e3;
+const z2=n=>String(n).padStart(2,'0');
+function khParts(ms){
+  const d=new Date(ms+KH_OFF);
+  return { d:d.getUTCFullYear()+'-'+z2(d.getUTCMonth()+1)+'-'+z2(d.getUTCDate()),
+           t:z2(d.getUTCHours())+':'+z2(d.getUTCMinutes()) };
+}
+const khToMs=(d,t)=> Date.parse(d+'T'+(t||'00:00')+':00Z')-KH_OFF;
+const today=()=>khParts(nowMs()).d;
+function inPeriod(ds){
+  if(period==='a') return true;
+  return (Date.parse(today()+'T00:00Z')-Date.parse(ds+'T00:00Z'))/86400000 < (period==='w'?7:30);
+}
+
+// Живая смена: отыграно (сек) = от старта до конца/сейчас минус все паузы, включая идущую
+function livePlayed(l,now){
+  const end=l.finished_at ? Date.parse(l.finished_at) : now;
+  const cur=(l.paused_at && !l.finished_at) ? Math.max(0,now-Date.parse(l.paused_at)) : 0;
+  return Math.max(0,(end-Date.parse(l.started_at)-cur)/1000-(l.pause_sec||0));
+}
+const clock=sec=>{ sec=Math.floor(sec); return Math.floor(sec/3600)+':'+z2(Math.floor(sec%3600/60))+':'+z2(sec%60); };
+const clockHM=sec=>{ const m=Math.floor(sec/60); return Math.floor(m/60)+':'+z2(m%60); };
+// Журнал пауз: [{s,e}] — когда началась и когда кончилась каждая пауза (e пусто — идет сейчас)
+const pauseSpans=log=>(Array.isArray(log)?log:[])
+  .map(p=>({s:Date.parse(p.s), e:p.e?Date.parse(p.e):null})).filter(p=>p.s);
+const spanSec=(p,now)=>Math.max(0,((p.e||now)-p.s)/1000);
+function spanText(p,now){
+  const d=pauseText(Math.round(spanSec(p,now)/60))||'меньше минуты';
+  return khParts(p.s).t+'–'+(p.e?khParts(p.e).t+' · '+d:'… · идёт '+d);
+}
+const spansLine=(log,now)=>pauseSpans(log).map(p=>spanText(p,now)).join(', ');
+// ч:мм по Камбодже → момент, ближайший к ref: пауза через полночь не съезжает на сутки
+function khNear(t,ref){
+  let ms=khToMs(khParts(ref).d,t);
+  if(ms-ref>12*3600e3) ms-=86400e3; else if(ref-ms>12*3600e3) ms+=86400e3;
+  return ms;
+}
+// паузы из формы (ч:мм) → отрезки. Пауза раньше начала смены — уже следующие сутки,
+// конец раньше начала паузы — пауза через полночь. Незаполненные строки не считаем.
+function spansFromTimes(d,t,rows){
+  if(!d) return [];
+  const st=khToMs(d,t||'00:00');
+  return rows.filter(p=>p.s&&p.e).map(function(p){
+    let s=khToMs(d,p.s); if(s<st) s+=864e5;
+    let e=khToMs(d,p.e); if(e<s) e+=864e5;
+    return {s:s,e:e};
+  });
+}
+/* ---- игроки: кто сколько сидел и кто за кого платит ---- */
+// отрезки времени [{s,e}] в мс: длина, обрезка по смене, вычитание пауз, пересечение
+const spanLen=list=>list.reduce((a,p)=>a+Math.max(0,p.e-p.s),0);
+const spanCut=(list,a,b)=>list.map(p=>({s:Math.max(p.s,a),e:Math.min(p.e,b)})).filter(p=>p.e>p.s)
+  .sort((x,y)=>x.s-y.s).reduce((o,p)=>{ const l=o[o.length-1]; if(l&&p.s<=l.e) l.e=Math.max(l.e,p.e); else o.push(p); return o; },[]);
+function spanMinus(list,holes){
+  let out=list.slice();
+  (holes||[]).forEach(function(h){
+    const next=[];
+    out.forEach(function(p){
+      if(h.e<=p.s||h.s>=p.e){ next.push(p); return; }
+      if(h.s>p.s) next.push({s:p.s,e:h.s});
+      if(h.e<p.e) next.push({s:h.e,e:p.e});
+    });
+    out=next;
+  });
+  return out;
+}
+function spanAnd(a,b){
+  const out=[];
+  a.forEach(p=>b.forEach(function(q){ const s=Math.max(p.s,q.s), e=Math.min(p.e,q.e); if(e>s) out.push({s:s,e:e}); }));
+  return out;
+}
+// ч:мм в смене на дату d: раньше ref — уже следующие сутки
+function khAfter(d,t,ref){ let ms=khToMs(d,t); if(ms<ref) ms+=864e5; return ms; }
+// Счет игроков: сумма смены делится пропорционально времени за столом, паузы не считаются.
+// Кто платит за всех (payer) — берет на себя долю каждого за то время, что тот сидел вместе с ним;
+// кто подсел уже после его ухода, платит за себя сам. Если времени ни у кого нет — поровну.
+// players: [{id, spans:[{s,e}]}] → [{id, ms, share, amount, covered}], суммы в центах сходятся с total.
+function splitPlayers(total,players,pauses,payer){
+  if(!players.length) return [];
+  const own=players.map(p=>spanMinus(p.spans||[],pauses));
+  let t=own.map(spanLen), T=t.reduce((a,x)=>a+x,0);
+  const flat=!(T>0);
+  if(flat){ t=players.map(()=>1); T=players.length; }
+  const pi=players.findIndex(p=>p.id===payer);
+  const res=players.map((p,i)=>({id:p.id, ms:flat?0:t[i], share:total*t[i]/T, amount:total*t[i]/T, covered:0}));
+  if(pi>=0) res.forEach(function(r,i){
+    if(i===pi) return;
+    const moved=total*(flat?1:spanLen(spanAnd(own[i],own[pi])))/T;
+    r.amount-=moved; r.covered=moved; res[pi].amount+=moved;
+  });
+  const cents=v=>Math.round(v*100)/100;
+  res.forEach(r=>{ r.share=cents(r.share); r.amount=cents(r.amount); r.covered=cents(r.covered); });
+  const diff=cents(total-res.reduce((a,r)=>a+r.amount,0));
+  if(diff){ const big=res.reduce((a,r)=>r.amount>a.amount?r:a,res[0]); big.amount=cents(big.amount+diff); }
+  return res;
+}
+// живая смена: отрезки каждого игрока из журнала; кого добавили без времени — вся смена
+function livePlayerSpans(l,now){
+  const end=l.finished_at?Date.parse(l.finished_at):now, start=Date.parse(l.started_at), log=Array.isArray(l.customer_log)?l.customer_log:[];
+  return (l.customer_ids||[]).map(function(id){
+    const mine=log.filter(x=>x.id===id).map(x=>({s:Date.parse(x.s), e:x.e?Date.parse(x.e):end}));
+    return {id:id, spans:spanCut(mine.length?mine:[{s:start,e:end}],start,end)};
+  });
+}
+const livePauseSpans=(l,now)=>pauseSpans(l.pause_log).map(p=>({s:p.s,e:p.e||(l.finished_at?Date.parse(l.finished_at):now)}));
+// Операторы тоже могут меняться по ходу смены: их половина делится по времени работы (паузы не считаются).
+// Кто без отметок «заступил / сменился» — работал всю смену.
+function liveWorkerSpans(l,now){
+  const end=l.finished_at?Date.parse(l.finished_at):now, start=Date.parse(l.started_at), log=Array.isArray(l.worker_log)?l.worker_log:[];
+  return (l.worker_ids||[]).map(function(id){
+    const mine=log.filter(x=>x.id===id).map(x=>({s:Date.parse(x.s), e:x.e?Date.parse(x.e):end}));
+    return {id:id, spans:spanCut(mine.length?mine:[{s:start,e:end}],start,end)};
+  });
+}
+// доли операторов: операторская половина по времени работы, копейки сходятся
+const splitWorkers=(pool,workers,pauses)=>splitPlayers(pool,workers,pauses,null);
+// поля пауз на экране итога → новый журнал; дату каждой границы берем ближайшую к прежней
+function pausesFromInputs(vals,oldLog,startMs){
+  const old=pauseSpans(oldLog);
+  return vals.map(function(v,i){
+    const o=old[i]||{s:startMs,e:startMs};
+    const s=khNear(v.s,o.s);
+    return {s:s, e:v.e?khNear(v.e,o.e||s):null};
+  });
+}
+// итог живой смены: часы к оплате, дата по Камбодже и суммы после скидки
+function liveSummary(l,now){
+  const s=Date.parse(l.started_at), e=l.finished_at ? Date.parse(l.finished_at) : now;
+  const played=livePlayed(l,now), h=paidHours(played), d=khParts(s).d;
+  const c=calc(h,(l.worker_ids||[]).length,(l.customer_ids||[]).length,d,l.discount);
+  return {s,e,played,h,d,c,pauseMin:Math.round((l.pause_sec||0)/60)};
+}
+const owes=l=>!l.paid && Number(l.amount)>0.004;
+const parseAmt=v=>{const n=Number(String(v).replace(',','.').replace(/\s/g,''));return isFinite(n)?n:0;};
+const wName=id=>{const w=S.workers.find(x=>x.id===id);return w?w.name:'—';};
+const cName=id=>{const c=S.customers.find(x=>x.id===id);return c?c.name:'—';};
+
+/* ======================= ОФЛАЙН: КЭШ И ОЧЕРЕДЬ ======================= */
+const QKEY='uchet-queue-v1', CKEY='uchet-cache-v1';
+let queue=[], flushing=false, offlineData=false, cachedAt=null;
+
+function loadQueue(){ try{ queue=JSON.parse(safeStorage.getItem(QKEY)||'[]'); }catch(e){ queue=[]; } }
+function saveQueue(){ try{ safeStorage.setItem(QKEY,JSON.stringify(queue)); }catch(e){} }
+function saveCache(){
+  try{ safeStorage.setItem(CKEY,JSON.stringify({at:new Date().toISOString(),S:S})); }catch(e){}
+}
+function loadCache(){
+  try{
+    const c=JSON.parse(safeStorage.getItem(CKEY)||'null');
+    if(!c||!c.S) return false;
+    S=c.S; cachedAt=c.at; offlineData=true; return true;
+  }catch(e){ return false; }
+}
+const online=()=> navigator.onLine!==false;
+
+// id смены дает сайт: повтор записи (ответ потерялся, очередь отправила еще раз) не создаст дубль
+const newId=()=>crypto.randomUUID ? crypto.randomUUID()
+  : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
+function enqueue(item){
+  item.id='q'+Date.now()+Math.floor(Math.random()*1000);
+  if(item.t==='shift') item.sid=newId();
+  item.at=new Date().toISOString();
+  queue.push(item); saveQueue();
+}
+// незаписанное показываем в списке и учитываем в балансах — деньги есть деньги
+function applyPending(){
+  queue.forEach(function(q){
+    if(q.t==='shift'){
+      S.shifts.unshift({ id:q.id, pending:true, note:q.row.note,
+        work_date:q.row.work_date, start_time:q.row.start_time, hours:q.row.hours,
+        pause_min:q.row.pause_min||0, discount:q.row.discount||0, pause_log:q.row.pause_log||[],
+        total:q.row.total, kassa:q.row.kassa,
+        per_worker:q.row.per_worker, per_customer:q.row.per_customer,
+        workerIds:q.workers.slice(), customerIds:q.customers.slice(),
+        workerLinks:(q.wlinks||[]).map(w=>({id:w.worker_id,share:w.share,spans:w.spans||[]})),
+        custLinks:(q.links||q.customers.map(id=>({customer_id:id,amount:q.row.per_customer})))
+          .map(l=>({id:l.customer_id,paid:false,amount:l.amount,share:l.share,spans:l.spans||[],paid_by:l.paid_by||null})),
+        created_at:q.at });
+    } else {
+      S.ops.unshift({ id:q.id, pending:true, kind:q.row.kind, worker_id:q.row.worker_id,
+        amount:q.row.amount, op_date:q.row.op_date, note:q.row.note, created_at:q.at });
+    }
+  });
+}
+async function flushQueue(){
+  if(flushing || !queue.length || locked || !online()) return false;
+  flushing=true;
+  while(queue.length){
+    const q=queue[0];
+    try{
+      if(q.t==='shift'){
+        if(!q.sid){ q.sid=newId(); saveQueue(); }   // запись из прошлой версии сайта
+        // смена и люди — одной записью: целиком или ничего
+        const {error}=await sb.rpc('save_shift',{p_id:q.sid, p_shift:q.row,
+          p_workers:q.wlinks||q.workers.map(id=>({worker_id:id})),
+          p_customers:q.links||q.customers.map(id=>({customer_id:id,amount:q.row.per_customer}))});
+        if(error) throw error;
+        sb.functions.invoke('notify-shift',{body:{shift_id:q.sid}}).catch(function(){});
+      } else {
+        const {error}=await sb.from('ops').insert(q.row);
+        if(error) throw error;
+      }
+      // убираем именно эту запись: пока она уходила, очередь могли поправить
+      queue=queue.filter(x=>x.id!==q.id); saveQueue();
+    }catch(e){ flushing=false; renderOffbar(); return false; }
+  }
+  flushing=false;
+  try{ await loadAll(); saveCache(); }catch(e){}
+  renderAll(); toast('Записи отправлены в базу');
+  return true;
+}
+function renderOffbar(){
+  const el=document.getElementById('offbar');
+  const n=queue.length;
+  // есть неотправленное — Telegram переспросит перед закрытием
+  if(tgv('6.2')) tgTry(()=> n ? TG.enableClosingConfirmation() : TG.disableClosingConfirmation());
+  if(online() && !n && !offlineData){ el.style.display='none'; return; }
+  el.style.display='flex';
+  let t;
+  if(!online()) t='<b>Нет сети</b> · смены записываются и уйдут сами';
+  else if(n)    t='<b>Не отправлено: '+n+'</b> · нажми, чтобы отправить';
+  else          t='<b>Данные из памяти</b>'+(cachedAt?' · от '+new Date(cachedAt).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'');
+  el.innerHTML='<span class="t">'+t+'</span>'+
+    (online()?'<button id="offRetry">Обновить</button>':'');
+}
+document.getElementById('offbar').addEventListener('click',async function(e){
+  if(e.target.id!=='offRetry') return;
+  const b=e.target; b.textContent='…';
+  if(queue.length) await flushQueue();
+  else { try{ await loadAll(); saveCache(); offlineData=false; renderAll(); toast('Обновлено'); }catch(_){ toast('База недоступна'); } }
+  renderOffbar();
+});
+window.addEventListener('online', function(){ renderOffbar(); flushQueue(); });
+window.addEventListener('offline', renderOffbar);
+
+/* ======================= ЗАГРУЗКА ======================= */
+// Учет закрыт от посторонних: база отдает данные только владельцу (вход по почте),
+// а тем, кого он пустил через Telegram, — функция tg-access по подписи Telegram.
+const gateErr=st=>Object.assign(new Error('gate'),{gate:st});
+// часы сервера: t0/t1 — когда ушел запрос и пришел ответ
+const syncClock=(serverIso,t0,t1)=>{ const s=Date.parse(serverIso); if(s) clockOff=s-(t0+t1)/2; };
+async function fetchAll(){
+  if(canWrite || (user && !online())){
+    const t0=Date.now();
+    sb.rpc('live_now').then(r=>{ if(r.data) syncClock(r.data,t0,Date.now()); }).catch(function(){});
+    const r=await Promise.all([
+      sb.from('workers').select('*').order('created_at'),
+      sb.from('customers').select('*').order('created_at'),
+      sb.from('shifts').select('*').order('work_date',{ascending:false}).order('created_at',{ascending:false}),
+      sb.from('shift_workers').select('*'),
+      sb.from('shift_customers').select('*'),
+      sb.from('ops').select('*').order('op_date',{ascending:false}),
+      sb.from('live_shifts').select('*').order('started_at')
+    ]);
+    const err=r.find(x=>x.error);
+    if(err) throw err.error;
+    return r.map(x=>x.data||[]);
+  }
+  if(!TG) throw gateErr({status:'closed'});
+  const t0=Date.now();
+  const {data,error}=await sb.functions.invoke('tg-access',{body:{initData:TG.initData}});
+  if(error) throw error;
+  if(data && data.now) syncClock(data.now,t0,Date.now());
+  if(!data || data.status==='error') throw new Error((data&&data.error)||'tg-access');
+  if(!data.ok) throw gateErr(data);
+  // владелец дал правку — входим под учеткой этого Telegram; забрал — выходим из нее
+  if(data.session){
+    try{ await sb.auth.setSession(data.session); await refreshAuth(); }catch(_){}
+  } else if(tgAccount(user)){
+    try{ await sb.auth.signOut({scope:'local'}); }catch(_){}
+    await refreshAuth();
+  }
+  const d=data.data;
+  return [d.workers,d.customers,d.shifts,d.shift_workers,d.shift_customers,d.ops,d.live_shifts||[]];
+}
+async function loadAll(){
+  const [w,c,s,sw,sc,o,lv]=await fetchAll();
+  S.workers=w; S.customers=c;
+  S.live=(lv||[]).map(x=>Object.assign({},x,{discount:Number(x.discount)||0}));
+  S.ops=o.map(x=>Object.assign({},x,{amount:Number(x.amount)}));
+  S.shifts=s.map(x=>Object.assign({},x,{
+    total:Number(x.total), kassa:Number(x.kassa),
+    per_worker:Number(x.per_worker), per_customer:Number(x.per_customer),
+    pause_min:Number(x.pause_min)||0, discount:Number(x.discount)||0,
+    workerIds:sw.filter(r=>r.shift_id===x.id).map(r=>r.worker_id),
+    workerLinks:sw.filter(r=>r.shift_id===x.id).map(r=>({id:r.worker_id,
+      share:r.share!=null?Number(r.share):null, spans:r.spans||[]})),
+    custLinks:sc.filter(r=>r.shift_id===x.id)
+      .map(r=>({id:r.customer_id,paid:r.paid===true,paid_at:r.paid_at||null,
+                amount:r.amount!=null?Number(r.amount):Number(x.per_customer),
+                share:r.share!=null?Number(r.share):null, spans:r.spans||[], paid_by:r.paid_by||null})),
+    customerIds:sc.filter(r=>r.shift_id===x.id).map(r=>r.customer_id)
+  }));
+  offlineData=false;
+  applyPending();
+}
+async function refreshAuth(){
+  const {data}=await sb.auth.getSession();
+  user=data&&data.session?data.session.user:null;
+  isOwner=false; canWrite=false;
+  if(user){
+    const {data:rows}=await sb.from('owners').select('email');
+    isOwner=!!(rows&&rows.some(r=>String(r.email).toLowerCase()===String(user.email).toLowerCase()));
+    // правку тем, кого пустили через Telegram, выдает владелец — решает база
+    canWrite = isOwner || (await sb.rpc('can_write')).data===true;
+  }
+  locked=!canWrite;
+}
+// учетка человека из Telegram (не владельца) — ее выдает и забирает tg-access
+const tgAccount=u=>!!(u && u.app_metadata && u.app_metadata.tg_id);
+let reloadT;
+function scheduleReload(){
+  clearTimeout(reloadT);
+  reloadT=setTimeout(async()=>{
+    try{ await loadAll(); renderAll(); }
+    catch(e){ if(e&&e.gate) closeGate(e.gate); }   // доступ закрыли, пока учет был открыт
+  },500);
+}
+async function boot(){
+  loadQueue();
+  try{
+    try{ await refreshAuth(); }catch(_){}
+    try{
+      await loadAll(); saveCache();
+    }catch(netErr){
+      if(netErr && netErr.gate) throw netErr;
+      if(!loadCache()) throw netErr;
+      applyPending();
+    }
+    startApp();
+  }catch(e){
+    if(e && e.gate){ closeGate(e.gate); return; }
+    document.getElementById('boot').innerHTML=
+      '<div class="t" style="max-width:280px;text-align:center;line-height:1.5">Не удалось связаться с базой.<br>Проверь интернет и обнови страницу.</div>';
+    return;
+  }
+}
+let started=false;
+function startApp(){
+  gated=null;
+  const me=S.workers.filter(w=>w.is_me)[0];
+  selW = (!locked && me) ? [me.id] : [];
+  applyLock(); renderAll();
+  booting=false; renderAll();
+  document.getElementById('boot').classList.add('off');
+  renderOffbar();
+  flushQueue();
+  if(!started){
+    started=true; initReveal();
+    // кто смотрит через Telegram без правки, не подписан на изменения базы — освежаем раз в минуту
+    setInterval(function(){ if(!document.hidden && !canWrite && TG) scheduleReload(); },60000);
+    try{
+      sb.channel('uchet')
+        .on('postgres_changes',{event:'*',schema:'public'},scheduleReload)
+        .subscribe();
+    }catch(_){}
+  }
+  if(isOwner) ownerExtras();
+}
+
+/* ======================= ЗАКРЫТЫЙ ДОСТУП ======================= */
+let gated=null;
+const GATE={
+  pending:['Доступ запрошен','Владелец учета получил запрос. Как подтвердит — нажми «Проверить».'],
+  blocked:['Нет доступа','Владелец закрыл тебе доступ к учету.'],
+  notg:['Открой заново','Закрой учет и открой его снова кнопкой в боте.'],
+  closed:['Учет закрыт','Учет открывается через Telegram-бота, для тех, кого пустил владелец.']
+};
+// посторонним — ни данных на экране, ни копии в памяти телефона
+function closeGate(st){
+  gated=st;
+  S={workers:[],customers:[],shifts:[],ops:[],live:[]};
+  safeStorage.removeItem(CKEY);
+  renderAll();
+  const g=GATE[st.status]||GATE.closed, boot=document.getElementById('boot');
+  boot.innerHTML='<div class="gate"><div class="ic">🔒</div><div class="t">'+g[0]+'</div>'+
+    '<div class="s">'+g[1]+(st.status==='pending'&&st.id
+      ? '<br><span class="num">'+esc(st.name||'')+' · id '+esc(st.id)+'</span>' : '')+'</div>'+
+    (st.status==='pending'?'<button class="btn" id="gateRetry">Проверить</button>':'')+
+    '<button class="btn sec mt" id="gateLogin">Я владелец — войти по почте</button></div>';
+  boot.classList.remove('off');
+}
+document.getElementById('boot').addEventListener('click',function(e){
+  if(e.target.id==='gateRetry'){ e.target.textContent='…'; boot(); }
+  if(e.target.id==='gateLogin'){ this.classList.add('off'); openSheet('authSheet'); }
+});
+
+// владельцу: свой Telegram — в доверенные, плюс список запросов
+function ownerExtras(){
+  if(TG) sb.functions.invoke('tg-access',{body:{initData:TG.initData,owner:true}})
+    .then(()=>loadMembers()).catch(function(){});
+  loadMembers(true);
+}
+let M=[];
+async function loadMembers(announce){
+  if(!isOwner){ M=[]; renderMembers(); return; }
+  const {data,error}=await sb.from('members').select('*').order('created_at');
+  if(error) return;
+  M=data||[]; renderMembers();
+  const n=M.filter(m=>m.status==='pending').length;
+  document.getElementById('gear').classList.toggle('dot',n>0);
+  if(announce && n) toast('Запросы доступа: '+n+' — открой ⚙');
+}
+function renderMembers(){
+  const st=m=> m.owner_tg ? 'владелец' : m.status==='pending' ? 'ждет' : m.status==='blocked' ? 'закрыт'
+    : m.can_edit ? 'правит' : 'смотрит';
+  document.getElementById('mlist').innerHTML = M.length ? M.map(m=>
+    '<div class="lrow'+(m.status==='active'?'':' off')+'"><span class="nm">'+esc(m.name||('id '+m.tg_id))+
+      (m.username?' <span class="un">@'+esc(m.username)+'</span>':'')+
+      '<span class="tag">'+st(m)+'</span></span>'+
+    (m.status==='pending'
+      ? '<button class="me on" data-mok="'+m.tg_id+'">Пустить</button><button class="me" data-mno="'+m.tg_id+'">Отклонить</button>'
+      : m.status==='active'
+        ? (m.owner_tg ? '' : '<button class="me'+(m.can_edit?' on':'')+'" data-medit="'+m.tg_id+'" aria-pressed="'+!!m.can_edit+'">'+
+            (m.can_edit?'Правка ✓':'Правка')+'</button>')+
+          '<button class="me" data-mno="'+m.tg_id+'">Закрыть</button>'
+        : '<button class="me" data-mok="'+m.tg_id+'">Вернуть</button>')+
+    '</div>').join('')
+    : '<div class="empty">Запросов нет. Человек открывает учет в боте — и появляется здесь.</div>';
+}
+document.getElementById('mlist').onclick=async e=>{
+  const ed=e.target.closest('[data-medit]');
+  if(ed){
+    if(guard()||!isOwner) return;
+    const id=ed.dataset.medit, m=M.find(x=>String(x.tg_id)===id), on=!(m&&m.can_edit);
+    if(on && !await ask('Разрешить '+((m&&m.name)||id)+' записывать и править смены, оплаты и списки?')) return;
+    const {error}=await sb.from('members').update({can_edit:on}).eq('tg_id',id);
+    if(error) return fail(error);
+    tap(18); await loadMembers();
+    if(!on){ toast('Правка закрыта — дальше только просмотр'); return; }
+    let sent=false;
+    try{ const {data}=await sb.functions.invoke('tg-access',{body:{notify:id,what:'edit'}}); sent=!!(data&&data.ok); }catch(_){}
+    toast(sent ? 'Правка открыта — бот написал '+((m&&m.name)||'человеку') : 'Правка открыта, скажи человеку открыть учет заново');
+    return;
+  }
+  const ok=e.target.closest('[data-mok]'), no=e.target.closest('[data-mno]');
+  if(!ok&&!no) return;
+  if(guard()) return;
+  const id=ok?ok.dataset.mok:no.dataset.mno, m=M.find(x=>String(x.tg_id)===id);
+  if(no && m && m.status==='active' && !await ask('Закрыть доступ: '+(m.name||id)+'?')) return;
+  const {error}=await sb.from('members')
+    .update({status:ok?'active':'blocked',decided_at:new Date().toISOString()}).eq('tg_id',id);
+  if(error) return fail(error);
+  tap(18); await loadMembers();
+  if(!ok){ toast('Доступ закрыт'); return; }
+  // человеку — сообщение от бота, что доступ открыт
+  let sent=false;
+  try{ const {data}=await sb.functions.invoke('tg-access',{body:{notify:id}}); sent=!!(data&&data.ok); }catch(_){}
+  toast(sent ? 'Доступ открыт — бот написал '+((m&&m.name)||'человеку')
+             : 'Доступ открыт, но бот не смог написать — скажи сам');
+};
+
+/* ======================= МЕЛОЧИ ======================= */
+let toastT;
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('on');
+  clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('on'),2600);
+}
+const reduce=()=>window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+function guard(){ if(locked){ openSheet('authSheet'); return true; } return false; }
+async function fail(error,what){
+  const m=error&&error.message?error.message:'';
+  toast(/row-level security|permission/i.test(m) ? 'Нет прав на запись' : (what||'Ошибка')+(m?': '+m:''));
+}
+
+/* ======================= РЕЖИМ ДОСТУПА ======================= */
+function applyLock(){
+  document.body.classList.toggle('ro',locked);
+  document.body.classList.toggle('no-own',!isOwner);
+  const fr=document.getElementById('firstRun');
+  if(fr) fr.style.display=(!locked && !booting && !S.shifts.length && !S.ops.length)?'block':'none';
+  document.getElementById('form').style.display=locked?'none':'block';
+  document.getElementById('lockCard').style.display=locked?'block':'none';
+  document.getElementById('mode').innerHTML = locked
+    ? '<span class="t"><b>Только просмотр</b>'+(user&&!tgAccount(user)?' · нет прав на запись':' · записи ведет владелец')+'</span><button id="login">Войти</button>'
+    : !isOwner
+      ? '<span class="t"><b>Можно править</b> · правку дал владелец</span>'
+      : '<span class="t"><b>Полный доступ</b> · '+esc(user?user.email:'')+'</span><button id="logout">Выйти</button>';
+  document.getElementById('setLead').textContent = locked
+    ? 'Просмотр списков. Изменения доступны владельцу.'
+    : '✎ — переименовать, × — убрать в архив. Старые смены не пострадают.';
+  document.getElementById('dbNote').textContent =
+    'Данные в облачной базе. CSV открывается в Excel и Google Таблицах, JSON — резервная копия.';
+}
+document.getElementById('mode').addEventListener('click',async e=>{
+  if(e.target.id==='login') openSheet('authSheet');
+  else if(e.target.id==='logout'){
+    await sb.auth.signOut(); await refreshAuth();
+    selW=[]; M=[]; document.getElementById('gear').classList.remove('dot');
+    try{ await loadAll(); saveCache(); applyLock(); renderAll(); toast('Вышли из учетной записи'); }
+    catch(err){ applyLock(); if(err&&err.gate) closeGate(err.gate); }
+  }
+});
+document.getElementById('unlock2').onclick=()=>openSheet('authSheet');
+document.getElementById('authCancel').onclick=closeSheets;
+document.getElementById('doLogin').onclick=async()=>{
+  const email=document.getElementById('email').value.trim();
+  const pass=document.getElementById('pass').value;
+  if(!email||!pass){ toast('Введи почту и пароль'); return; }
+  const {error}=await sb.auth.signInWithPassword({email,password:pass});
+  if(error){ toast(/invalid/i.test(error.message)?'Почта или пароль не подходят':error.message); return; }
+  await refreshAuth();
+  document.getElementById('pass').value='';
+  if(!isOwner){ toast('Вход выполнен, но прав на запись нет'); return; }
+  closeSheets();
+  try{ await loadAll(); saveCache(); }catch(_){ toast('Не удалось загрузить данные'); }
+  startApp();
+  toast('Полный доступ открыт');
+};
+document.getElementById('pass').onkeydown=e=>{ if(e.key==='Enter') document.getElementById('doLogin').click(); };
+
+/* ======================= ВКЛАДКИ ======================= */
+const scrollMem={new:0,live:0,sum:0,hist:0};
+const tabNames=['new','live','sum','hist'];
+window.addEventListener('scroll',function(){ scrollMem[tabNames[curTab]]=window.scrollY; },{passive:true});
+document.querySelector('.tabs').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-v]'); if(!b) return;
+  const names=tabNames, i=names.indexOf(b.dataset.v);
+  if(i===curTab) return;
+  document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));
+  document.getElementById('glide').style.transform='translateX('+(i*100)+'%)';
+  const dir = i>curTab ? 'fromR' : (i<curTab ? 'fromL' : '');
+  curTab=i;
+  names.forEach(function(n){
+    const el=document.getElementById('v-'+n);
+    el.classList.remove('fromR','fromL');
+    if(n===b.dataset.v && dir) el.classList.add(dir);
+    el.classList.toggle('on',n===b.dataset.v);
+  });
+  if(b.dataset.v==='sum') renderSummary();
+  requestAnimationFrame(watchReveal);
+  const y=scrollMem[b.dataset.v]||0;
+  requestAnimationFrame(()=>window.scrollTo({top:y,behavior:'auto'}));
+});
+
+/* ======================= СМЕНА ======================= */
+function renderStrip(){
+  const el=document.getElementById('strip'); el.innerHTML='';
+  const wd=document.getElementById('date').value;
+  for(let i=1;i<=hours;i++){
+    const p=priceOfHour(i,wd), d=document.createElement('div');
+    d.className='hr '+(p===100?'full':p===0?'free':'half');
+    d.style.animationDelay=(Math.min(i,12)*20)+'ms';
+    d.innerHTML='<div class="pr">'+p+'</div><div class="ix">'+i+'ч</div>';
+    el.appendChild(d);
+  }
+}
+const chipHtml=(o,on)=>'<button class="chip" data-id="'+o.id+'" aria-pressed="'+on+'">'+esc(o.name)+'</button>';
+function renderChips(){
+  const w=S.workers.filter(x=>x.active), c=S.customers.filter(x=>x.active);
+  document.getElementById('wchips').innerHTML = w.length
+    ? w.map(x=>chipHtml(x,selW.indexOf(x.id)>=0)).join('') : '<div class="empty">Список пуст</div>';
+  document.getElementById('cchips').innerHTML = c.length
+    ? c.map(x=>chipHtml(x,selC.indexOf(x.id)>=0)).join('') : '<div class="empty">Список пуст</div>';
+}
+// Паузы в форме — каждая отдельно, со временем начала и конца (как у таймера)
+let formPauses=[], formPauseExtra=0;   // extra — старая пауза без времени (при правке давней смены)
+const formSpans=()=>spansFromTimes(document.getElementById('date').value,document.getElementById('time').value,formPauses);
+const formPause=()=>Math.round(formSpans().reduce((a,p)=>a+(p.e-p.s),0)/60e3)+formPauseExtra;
+const formPauseHalf=()=>formPauses.some(p=>!p.s!==!p.e);
+const formPauseLog=()=>formSpans().map(p=>({s:new Date(p.s).toISOString(),e:new Date(p.e).toISOString()}));
+function renderPauseList(){
+  const spans=spansFromTimes(document.getElementById('date').value,document.getElementById('time').value,
+    formPauses.map(p=>p.s&&p.e?p:{s:'',e:''}));
+  let k=0;
+  document.getElementById('pauseList').innerHTML=formPauses.map(function(p,i){
+    const sp=(p.s&&p.e)?spans[k++]:null;
+    return '<div class="prow" data-fp="'+i+'">'+
+      '<input type="time" data-fps="s" value="'+p.s+'"><span>–</span>'+
+      '<input type="time" data-fps="e" value="'+p.e+'">'+
+      '<span class="pd">'+(sp?(pauseText(Math.round((sp.e-sp.s)/60e3))||'0 мин'):'—')+'</span>'+
+      '<button class="del" type="button" data-fpdel="'+i+'" aria-label="Убрать паузу">×</button></div>';
+  }).join('')+
+  (formPauseExtra?'<div class="prow"><span style="flex:1">без времени</span><span class="pd">'+pauseText(formPauseExtra)+'</span>'+
+    '<button class="del" type="button" data-fpx="1" aria-label="Убрать паузу">×</button></div>':'');
+}
+function clearExtras(){
+  formPauses=[]; formPauseExtra=0; renderPauseList();
+  formPlayers={}; formPayer=null; document.getElementById('playersList').dataset.key='';
+  formWorkers={}; document.getElementById('workersList').dataset.key='';
+  document.getElementById('discount').value='';
+}
+
+// Игроки в форме: во сколько сел и встал (пусто — вся смена) и кто платит за всех, кто сидел с ним
+let formPlayers={}, formPayer=null;
+// правка смены из таймера: к оплате часы округлены, а конец — настоящий, пока время смены не трогали
+let editEnd=null;
+const whenKey=()=>document.getElementById('date').value+'|'+document.getElementById('time').value+'|'+hours+'|'+formPause();
+function formWindow(){
+  const d=document.getElementById('date').value, t=document.getElementById('time').value;
+  if(!d||!t) return null;
+  const s=khToMs(d,t), w={d:d, s:s, e:s+(hours*60+formPause())*60e3};
+  if(editEnd && editEnd.key===whenKey()) w.e=editEnd.e;
+  return w;
+}
+// поля «с / до» (или «сел / встал») → отрезок внутри смены; пусто — вся смена
+function entrySpans(fp,w){
+  fp=fp||{};
+  if(!w) return [];
+  if(fp.orig && !fp.dirty) return spanCut(fp.orig,w.s,w.e);   // давняя смена: время как было записано
+  let s=fp.s?khAfter(w.d,fp.s,w.s):w.s;
+  if(s>w.e && w.s+864e5-s<=3*3600e3) s=w.s;   // «сел 21:55» при начале в 22:00 — это с начала, а не завтра
+  const e=fp.e?khAfter(w.d,fp.e,s):w.e;
+  return spanCut([{s:s,e:e}],w.s,w.e);
+}
+// Операторы в форме: кто во сколько работал — их половина делится по времени
+let formWorkers={};
+function formWorkerSplit(pool){
+  const w=formWindow(), workers=selW.map(id=>({id:id, spans:entrySpans(formWorkers[id],w)}));
+  return {w:w, workers:workers, res:splitWorkers(pool,workers,w?formSpans():[])};
+}
+const workerRows=x=>x.res.map(r=>({worker_id:r.id, share:r.amount,
+  spans:spansToSave(x.workers.find(p=>p.id===r.id).spans,x.w)}));
+function renderWorkers(pool){
+  const box=document.getElementById('workersBox'), list=document.getElementById('workersList');
+  box.style.display=selW.length>1?'block':'none';
+  if(selW.length<2) return;
+  const x=formWorkerSplit(pool);
+  document.getElementById('workersCap').textContent = x.w ? 'Кто во сколько работал — пусто = вся смена'
+    : 'Операторы — поставь время начала смены, чтобы учесть, кто кого сменил';
+  const key=selW.join()+'|'+!!x.w;
+  if(list.dataset.key!==key){
+    list.dataset.key=key;
+    list.innerHTML=selW.map(function(id){
+      const fw=formWorkers[id]||{};
+      return '<div class="plrow" data-wk="'+id+'"><div class="top"><span>'+esc(wName(id))+'</span><b class="pa"></b></div>'+
+        (x.w?'<div class="times"><span>с</span><input type="time" data-wkf="s" value="'+(fw.s||'')+'">'+
+             '<span>до</span><input type="time" data-wkf="e" value="'+(fw.e||'')+'"></div>':'')+'</div>';
+    }).join('');
+  }
+  x.res.forEach(function(r){
+    const el=list.querySelector('[data-wk="'+r.id+'"] .pa'); if(el) el.textContent=money(r.amount)+(r.ms?' · '+clockHM(r.ms/1000):'');
+  });
+}
+document.getElementById('workersList').addEventListener('input',function(e){
+  const f=e.target.closest('[data-wkf]'); if(!f) return;
+  const id=f.closest('[data-wk]').dataset.wk, fw=formWorkers[id]=formWorkers[id]||{};
+  fw[f.dataset.wkf]=f.value; fw.dirty=true;
+  renderPreview();
+});
+const formPlayerSpans=(id,w)=>entrySpans(formPlayers[id],w);
+function formSplit(total){
+  const w=formWindow(), players=selC.map(id=>({id:id, spans:formPlayerSpans(id,w)}));
+  return {w:w, players:players, res:splitPlayers(total,players,w?formSpans():[],formPayer)};
+}
+// время игрока пишем, только если он сидел не всю смену
+function spansToSave(spans,w){
+  if(!w || !spans.length || (spans.length===1 && spans[0].s===w.s && spans[0].e===w.e)) return [];
+  return spans.map(p=>({s:new Date(p.s).toISOString(), e:new Date(p.e).toISOString()}));
+}
+function playerLinks(x,payer){
+  return x.res.map(r=>({customer_id:r.id, amount:r.amount, share:r.share,
+    spans:spansToSave(x.players.find(p=>p.id===r.id).spans,x.w),
+    paid_by:(payer && r.id!==payer && r.covered>0.004)?payer:null}));
+}
+function playerNote(r,payer){
+  if(payer && r.id===payer && r.amount>r.share+0.004) return money(r.amount)+' · свои '+money(r.share)+' + за других '+money(r.amount-r.share);
+  if(payer && r.id!==payer && r.covered>0.004) return r.amount>0.004 ? money(r.amount)+' · часть платит '+cName(payer) : '0 $ · платит '+cName(payer);
+  return money(r.amount)+(r.ms?' · '+clockHM(r.ms/1000):'');
+}
+function renderPlayers(total){
+  const box=document.getElementById('playersBox');
+  box.style.display=selC.length?'block':'none';
+  if(!selC.length) return;
+  if(formPayer && selC.indexOf(formPayer)<0) formPayer=null;
+  const x=formSplit(total), list=document.getElementById('playersList');
+  document.getElementById('playersCap').textContent = x.w ? 'Кто во сколько сидел — пусто = вся смена'
+    : 'Игроки — поставь время начала смены, чтобы учесть, кто во сколько сел';
+  // строки перерисовываем, только когда меняется состав: иначе поле теряет курсор
+  const key=selC.join()+'|'+!!x.w;
+  if(list.dataset.key!==key){
+    list.dataset.key=key;
+    list.innerHTML=selC.map(function(id){
+      const fp=formPlayers[id]||{};
+      return '<div class="plrow" data-pl="'+id+'"><div class="top"><span>'+esc(cName(id))+'</span><b class="pa"></b></div>'+
+        (x.w?'<div class="times"><span>сел</span><input type="time" data-plf="s" value="'+(fp.s||'')+'">'+
+             '<span>встал</span><input type="time" data-plf="e" value="'+(fp.e||'')+'"></div>':'')+'</div>';
+    }).join('');
+  }
+  x.res.forEach(function(r){
+    const el=list.querySelector('[data-pl="'+r.id+'"] .pa'); if(el) el.textContent=playerNote(r,formPayer);
+  });
+  document.getElementById('payerBox').style.display=selC.length>1?'block':'none';
+  document.getElementById('payerChips').innerHTML='<button class="chip" type="button" data-payer="" aria-pressed="'+!formPayer+'">Никто</button>'+
+    selC.map(id=>'<button class="chip" type="button" data-payer="'+id+'" aria-pressed="'+(formPayer===id)+'">'+esc(cName(id))+'</button>').join('');
+}
+document.getElementById('playersList').addEventListener('input',function(e){
+  const f=e.target.closest('[data-plf]'); if(!f) return;
+  const id=f.closest('[data-pl]').dataset.pl, fp=formPlayers[id]=formPlayers[id]||{};
+  fp[f.dataset.plf]=f.value; fp.dirty=true;
+  renderPreview();
+});
+document.getElementById('payerChips').onclick=e=>{
+  const b=e.target.closest('[data-payer]'); if(!b||guard()) return;
+  formPayer=b.dataset.payer||null; tap(8); renderPreview();
+};
+document.getElementById('pauseAdd').onclick=function(){
+  if(guard()) return;
+  // новая пауза — с конца прошлой или с начала смены, на 15 минут; время потом правится
+  const last=formPauses[formPauses.length-1], base=(last&&last.e)||document.getElementById('time').value||khParts(nowMs()).t;
+  const [h,m]=base.split(':').map(Number), t=(h*60+m+15)%1440;
+  formPauses.push({s:base, e:z2(Math.floor(t/60))+':'+z2(t%60)});
+  tap(8); renderPauseList(); renderPreview();
+};
+document.getElementById('pauseList').addEventListener('input',function(e){
+  const f=e.target.closest('[data-fps]'); if(!f) return;
+  const row=f.closest('[data-fp]'); formPauses[Number(row.dataset.fp)][f.dataset.fps]=f.value;
+  renderPreview();
+  const sp=spansFromTimes(document.getElementById('date').value,document.getElementById('time').value,[formPauses[Number(row.dataset.fp)]])[0];
+  row.querySelector('.pd').textContent=sp?(pauseText(Math.round((sp.e-sp.s)/60e3))||'0 мин'):'—';
+});
+document.getElementById('pauseList').addEventListener('click',function(e){
+  const d=e.target.closest('[data-fpdel]'), x=e.target.closest('[data-fpx]');
+  if(!d&&!x) return;
+  if(d) formPauses.splice(Number(d.dataset.fpdel),1); else formPauseExtra=0;
+  tap(8); renderPauseList(); renderPreview();
+});
+const formDiscount=()=>Math.max(0,parseAmt(document.getElementById('discount').value));
+function renderPreview(){
+  const c=calc(hours,selW.length,selC.length,document.getElementById('date').value,formDiscount());
+  const pm=formPause();
+  document.getElementById('pvTotal').textContent=money(c.total);
+  document.getElementById('pvLine').innerHTML =
+    (c.discount ? 'по тарифу '+money(c.full)+' − скидка <b>'+money(c.discount)+'</b><br>' : '') +
+    'в кассу <b>'+money(c.kassa)+'</b>' +
+    (selW.length ? workersLine(formWorkerSplit(c.total/2).res,c.perWorker) : '');
+  document.getElementById('hval').textContent=hours;
+  document.getElementById('hword').textContent=hourWord(hours);
+  const t=document.getElementById('time').value;
+  const np=formSpans().length+(formPauseExtra?1:0);
+  document.getElementById('window').innerHTML=(t?'<b>'+t+' → '+endTime(t,hours,pm)+'</b>':'время не указано')+
+    (pm?' · пауза '+pauseText(pm)+(np>1?' ('+np+')':''):'');
+  document.getElementById('save').disabled=shiftSaving||!(hours>=1&&selW.length>=1&&document.getElementById('date').value)||formPauseHalf();
+  document.getElementById('save').textContent = editId ? 'Сохранить изменения' : 'Записать смену';
+  document.getElementById('hint').textContent = !document.getElementById('date').value ? 'Поставь дату'
+    : formPauseHalf() ? 'У паузы не хватает начала или конца'
+    : !selW.length ? 'Отметь, кто работал'
+    : !selC.length ? 'Кастомер не выбран — запишется без привязки'
+    : formPayer ? cName(formPayer)+' платит за тех, кто сидел с ним, — их долг перейдёт на него'
+    : 'Смена запишется как неоплаченная — отметишь в истории';
+  renderPlayers(c.total);
+  renderWorkers(c.total/2);
+}
+// «рабочим по X», а если работали разное время — у каждого своё
+function workersLine(res,even){
+  if(!res.length || res.every(r=>Math.abs(r.amount-even)<0.01)) return ' · рабочим по <b>'+money(even)+'</b>';
+  return ' · рабочим: '+res.map(r=>esc(wName(r.id))+' <b>'+money(r.amount)+'</b>').join(', ');
+}
+
+/* ======================= ИТОГИ ======================= */
+// какая доля денег смены еще не роздана: 1 — смена без кастомеров, 0 — игроки все заплатили
+// (оплата игрока = его деньги уже раздали кассе и операторам на месте)
+function openShare(s){
+  const links=s.custLinks||[];
+  if(!links.length) return 1;
+  let total=0, unpaid=0;
+  links.forEach(l=>{ const amt=l.amount!=null?l.amount:s.per_customer; total+=amt; if(!l.paid) unpaid+=amt; });
+  return total>0 ? unpaid/total : 0;
+}
+const workerShare=(s,id)=>{ const wl=(s.workerLinks||[]).find(x=>x.id===id); return wl&&wl.share!=null?wl.share:s.per_worker; };
+function balances(){
+  let inK=0,outK=0; const acc={},paid={},debt={},earned={};
+  S.workers.forEach(w=>{acc[w.id]=0;paid[w.id]=0;});
+  let handed=0;                       // сколько уже роздано на месте
+  S.shifts.forEach(s=>{
+    const links=s.custLinks||[];
+    // деньги раздаются в момент оплаты: касса своё забрала, работники своё.
+    // Висит только то, за что игроки ещё не рассчитались.
+    links.forEach(function(l){
+      const amt=l.amount!=null?l.amount:s.per_customer;
+      if(l.paid) handed+=amt; else debt[l.id]=(debt[l.id]||0)+amt;
+    });
+    const op=openShare(s);
+    inK += s.kassa * op;
+    s.workerIds.forEach(id=>{
+      const mine=workerShare(s,id);
+      acc[id]=(acc[id]||0)+mine*op;
+      earned[id]=(earned[id]||0)+mine;
+    });
+  });
+  // Оплаты от игроков и долг до начала учета — общими суммами, как в заметках:
+  // ни к игроку, ни к смене не привязаны. Половина — кассе, половина — операторам.
+  let common=0, lump=0;
+  S.ops.forEach(o=>{
+    if(o.kind==='expense') outK+=o.amount;
+    else if(o.kind==='payout') paid[o.worker_id]=(paid[o.worker_id]||0)+o.amount;
+    else if(o.kind==='carry') common+=o.amount;
+    else if(o.kind==='income'){ common-=o.amount; lump+=o.amount; }
+  });
+  inK += common/2;
+  // операторскую половину делим между рабочими так же, как им начислялось по сменам
+  const ws=Object.keys(earned).length ? Object.keys(earned) : S.workers.map(w=>w.id);
+  const base=ws.reduce((a,id)=>a+(earned[id]||0),0);
+  ws.forEach(id=>{ acc[id]=(acc[id]||0)+common/2*(base>0?(earned[id]||0)/base:1/ws.length); });
+  handed += lump;
+  const debtTotal=Object.keys(debt).reduce((a,k)=>a+debt[k],0)+common;
+  return {inK,outK,handed,kassa:inK-outK,acc,paid,debt,common,debtTotal};
+}
+function renderSummary(){
+  const b=balances();
+
+  const list=S.workers.filter(w=>w.active||Math.abs((b.acc[w.id]||0)-(b.paid[w.id]||0))>0.005);
+  const kassaRow=
+    '<div class="row kassa"><div class="n">'+
+      '<div class="nm">Касса</div>'+
+      '<div class="sub wrap">половина смены · '+(b.outK>0.005?'вычтено выдач '+money(b.outK):'закроется, когда игроки заплатят')+'</div></div>'+
+    '<div class="b">'+money(b.kassa)+'</div>'+
+    '<button class="pill w-only" data-exp="1">Выдать</button></div>';
+
+  if(booting && !S.workers.length){ document.getElementById('workersCard').innerHTML=skeleton(3); }
+  else document.getElementById('workersCard').innerHTML = kassaRow + (list.length ? list.map(function(w){
+    const bal=(b.acc[w.id]||0)-(b.paid[w.id]||0), settled=Math.abs(bal)<0.005;
+    return '<div class="row'+(settled?' settled':'')+'"><div class="n">'+
+      '<div class="nm">'+esc(w.name)+(w.is_me?'<span class="tag">я</span>':'')+
+      (w.active?'':'<span class="tag">архив</span>')+'</div>'+
+      '<div class="sub wrap">'+((b.paid[w.id]||0)>0.005
+          ? 'выплачено вперёд '+money(b.paid[w.id])
+          : 'за неоплаченные смены')+'</div></div>'+
+      '<div class="b">'+money(bal)+'</div>'+
+      '<button class="pill w-only" data-pay="'+w.id+'">Выплатить</button></div>';
+  }).join('') : '<div class="empty">Работников нет</div>');
+
+  // долги кастомеров — считаем по всей истории, не по периоду
+  const dk=Object.keys(b.debt).filter(k=>b.debt[k]>0.005);
+  const hasCommon=Math.abs(b.common)>0.005;
+  document.getElementById('debtBlock').style.display = (dk.length||hasCommon)?'block':'none';
+  // общие оплаты и долг до учета не знают, за кого — отдельной строкой, чтобы итог сходился
+  const carry=S.ops.filter(o=>o.kind==='carry').reduce((a,o)=>a+o.amount,0);
+  const lumps=S.ops.filter(o=>o.kind==='income').reduce((a,o)=>a+o.amount,0);
+  const commonRow = hasCommon
+    ? '<div class="row kassa"><div class="n"><div class="nm">Общие оплаты</div>'+
+        '<div class="sub wrap">'+(carry>0.005?'до учета +'+money(carry)+' · ':'')+'оплаты −'+money(lumps)+'</div></div>'+
+        '<div class="b">'+money(b.common)+'</div>'+
+        '<button class="pill w-only" data-inc="1">Оплата</button></div>'
+    : '';
+  if(dk.length||hasCommon){
+    document.getElementById('debtCard').innerHTML = '<div class="row"><div class="n"><div class="nm">Итого должны</div>'+
+        '<div class="sub wrap">операторам и кассе по '+money(b.debtTotal/2)+'</div></div>'+
+        '<div class="b inv">'+money(b.debtTotal)+'</div></div>'+commonRow + dk
+      .sort((x,y)=>b.debt[y]-b.debt[x])
+      .map(function(id){
+        const games=S.shifts.filter(s=>(s.custLinks||[]).some(l=>l.id===id&&owes(l)))
+          .sort((x,y)=>String(y.work_date).localeCompare(String(x.work_date)));
+        const open=(openDebt===id);
+        const inner=games.map(function(g){
+          const l=(g.custLinks||[]).filter(x=>x.id===id)[0];
+          const amt=l&&l.amount!=null?l.amount:g.per_customer;
+          const d=String(g.work_date).split('-');
+          const others=(g.custLinks||[]).filter(x=>x.id!==id).map(x=>cName(x.id));
+          const win=g.start_time?hhmm(g.start_time)+'–'+shiftEnd(g):'';
+          return '<div class="grow"><div class="gi">'+
+            '<div class="gd">'+Number(d[2])+' '+MON[Number(d[1])-1]+
+              ' · '+g.hours+' '+hourWord(g.hours)+(win?' · '+win:'')+'</div>'+
+            '<div class="gs">'+(others.length?'с '+esc(others.join(', ')):'играл один')+
+              ' · '+esc(g.workerIds.map(wName).join(', '))+'</div></div>'+
+            '<div class="ga num">'+money(amt)+'</div>'+
+            '<button class="pill w-only" data-pay1="'+g.id+'|'+id+'">Закрыть</button></div>';
+        }).join('');
+        return '<div class="drow'+(open?' open':'')+'" data-debtrow="'+id+'">'+
+            '<div class="n"><div class="nm">'+esc(cName(id))+'</div>'+
+            '<div class="sub">по сменам · не оплачено игр: '+games.length+'</div></div>'+
+            '<div class="b inv">'+money(b.debt[id])+'</div>'+
+            '<div class="chev">›</div></div>'+
+          '<div class="dgames'+(open?' open':'')+'" data-dg="'+id+'"><div class="dgin">'+inner+
+            '<button class="btn sec w-only" data-debt="'+id+'" style="margin-top:12px">'+
+              'Закрыть весь долг · '+money(b.debt[id])+'</button></div></div>';
+      }).join('');
+  }
+
+  const sh=S.shifts.filter(s=>inPeriod(s.work_date));
+  const earned=sh.reduce((a,s)=>a+s.total,0), hrs=sh.reduce((a,s)=>a+s.hours,0);
+  document.getElementById('stats').innerHTML=
+    '<div class="st"><div class="v">'+sh.length+'</div><div class="c">смен</div></div>'+
+    '<div class="st"><div class="v">'+hrs+'</div><div class="c">часов</div></div>'+
+    '<div class="st"><div class="v">'+money(earned)+'</div><div class="c">заработано</div></div>';
+
+  const by={};
+  // своя доля игры (по времени); кто платил за других — тут без чужих денег
+  sh.forEach(s=>(s.custLinks||[]).forEach(l=>{ const id=l.id; if(!by[id])by[id]={sum:0,n:0};
+    by[id].sum+=l.share!=null?l.share:l.amount; by[id].n++; }));
+  const keys=Object.keys(by).sort((x,y)=>by[y].sum-by[x].sum);
+  document.getElementById('custTotals').innerHTML = keys.length
+    ? keys.map(id=>'<div class="lrow"><span class="nm">'+esc(cName(id))+'</span>'+
+        '<span class="num" style="color:var(--g2);font-size:12px">'+by[id].n+' см.</span>'+
+        '<span class="num" style="font-weight:600">'+money(by[id].sum)+'</span></div>').join('')
+    : '<div class="empty">Нет смен за период</div>';
+
+  renderBoard(b,sh.length,hrs);
+  const tk=document.getElementById('topKassa'); if(tk) tk.textContent=money(b.kassa);
+}
+
+/* ======================= ИСТОРИЯ ======================= */
+function entries(){
+  const a=S.shifts.map(s=>Object.assign({kind:'shift',date:s.work_date},s))
+    .concat(S.ops.map(o=>Object.assign({date:o.op_date},o)));
+  return a.sort((x,y)=> String(y.date).localeCompare(String(x.date)) ||
+    String(y.created_at||'').localeCompare(String(x.created_at||'')));
+}
+const MONFULL=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль',
+  'Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+let flt={type:'all',worker:'',customer:'',debt:false};
+
+function fltActive(){
+  return flt.type!=='all' || flt.worker || flt.customer || flt.debt;
+}
+function applyFilter(list){
+  return list.filter(function(e){
+    if(flt.type==='shift' && e.kind!=='shift') return false;
+    if(flt.type==='money' && e.kind==='shift') return false;
+    if(flt.worker){
+      const hit = e.kind==='shift' ? e.workerIds.indexOf(flt.worker)>=0 : e.worker_id===flt.worker;
+      if(!hit) return false;
+    }
+    if(flt.customer){
+      if(e.kind!=='shift' || e.customerIds.indexOf(flt.customer)<0) return false;
+    }
+    if(flt.debt){
+      if(e.kind!=='shift' || !(e.custLinks||[]).some(owes)) return false;
+    }
+    return true;
+  });
+}
+function fltText(){
+  const p=[];
+  if(flt.type==='shift') p.push('только смены');
+  if(flt.type==='money') p.push('только деньги');
+  if(flt.worker) p.push(wName(flt.worker));
+  if(flt.customer) p.push(cName(flt.customer));
+  if(flt.debt) p.push('в долг');
+  return p.join(' · ');
+}
+
+function renderList(){
+  const el=document.getElementById('list');
+  const info=document.getElementById('fltInfo');
+
+  if(fltActive()){
+    info.style.display='block';
+    info.innerHTML='<div class="fltinfo"><span class="t">Фильтр: '+esc(fltText())+
+      '</span><button id="fltClear" aria-label="Сбросить">×</button></div>';
+  } else info.style.display='none';
+
+  const all=applyFilter(entries());
+  if(!all.length){
+    el.innerHTML = booting
+      ? skeleton(4)
+      : '<div class="empty">'+(fltActive()
+          ? 'Под фильтр ничего не подходит.<span class="hintline">Сбрось фильтр, чтобы увидеть все записи.</span>'
+          : '<span class="big">Записей пока нет</span>Первую смену заведи на вкладке «Смена».')+'</div>';
+    return;
+  }
+
+  // считаем итоги по каждому месяцу
+  const stat={};
+  all.forEach(function(e){
+    const ym=String(e.date).slice(0,7);
+    if(!stat[ym]) stat[ym]={n:0,h:0,sum:0};
+    if(e.kind==='shift'){ stat[ym].n++; stat[ym].h+=e.hours; stat[ym].sum+=e.total; }
+  });
+
+  let out='', lastYm='';
+  all.forEach(function(e){
+    const ym=String(e.date).slice(0,7);
+    if(ym!==lastYm){
+      lastYm=ym;
+      const y=ym.split('-'), st=stat[ym];
+      out+='<div class="mhdr"><span class="m">'+MONFULL[Number(y[1])-1]+' '+y[0]+'</span>'+
+        (st && st.n
+          ? '<span class="st">'+st.n+' см · '+st.h+' ч · '+money(st.sum)+'</span>'
+          : '')+
+        '</div>';
+    }
+    out+=entryHtml(e);
+  });
+  el.innerHTML=out;
+}
+
+// операторы в подробностях смены: одинаково — «рабочим по X», менялись — у каждого своё
+function workersDetail(e){
+  const wl=e.workerLinks||[], timed=wl.some(w=>w.share!=null&&(pauseSpans(w.spans).length||Math.abs(w.share-e.per_worker)>0.004));
+  if(!timed) return '<div>рабочим — по '+money(e.per_worker)+'</div>';
+  return wl.map(function(w){
+    const sp=pauseSpans(w.spans);
+    return '<div class="lnk">'+esc(wName(w.id))+' — '+money(w.share!=null?w.share:e.per_worker)+
+      (sp.length?' · работал '+sp.map(p=>khParts(p.s).t+'–'+(p.e?khParts(p.e).t:'…')).join(', '):'')+'</div>';
+  }).join('');
+}
+function entryHtml(e){
+  const p=String(e.date).split('-'), open=(openId===e.id);
+  const day='<div class="d"><b>'+Number(p[2])+'</b><span>'+MON[Number(p[1])-1]+'</span></div>';
+  let cls='',top,sub,sum,detail;
+  if(e.kind==='shift'){
+    top=e.hours+' '+hourWord(e.hours)+' · '+e.workerIds.map(wName).map(esc).join(', ');
+    const pm=e.pause_min||0, disc=Number(e.discount)||0;
+    // часть паузы без времени — только у старых записей, где пауза была одной суммой
+    const untimed=pm-Math.round(pauseSpans(e.pause_log).reduce((a,p)=>a+spanSec(p,p.s),0)/60);
+    sub=(e.start_time?hhmm(e.start_time)+'–'+shiftEnd(e):'без времени')+
+        (pm?' · пауза '+pauseText(pm):'')+(disc?' · скидка '+money(disc):'')+' · '+
+        (e.customerIds.length?e.customerIds.map(cName).map(esc).join(' + '):'без кастомера')+
+        (e.note?' · '+esc(e.note):'');
+    sum=money(e.total);
+    detail=(pm?'<div>пауза — '+pauseText(pm)+', не оплачивается</div>':'')+
+           pauseSpans(e.pause_log).map(p=>'<div>&nbsp;&nbsp;⏸ '+spanText(p,0)+'</div>').join('')+
+           (untimed>0 && pauseSpans(e.pause_log).length ? '<div>&nbsp;&nbsp;⏸ без времени · '+pauseText(untimed)+'</div>' : '')+
+           (disc?'<div>скидка — '+money(disc)+' (по тарифу '+money(e.total+disc)+')</div>':'')+
+           '<div>в кассу — '+money(e.kassa)+'</div>'+workersDetail(e)+
+           (e.custLinks||[]).map(function(l){
+             const amt=l.amount!=null?l.amount:e.per_customer;
+             const sp=pauseSpans(l.spans), payer=(e.custLinks||[]).some(x=>x.paid_by===l.id);
+             return '<div class="lnk">'+esc(cName(l.id))+' — '+money(amt)+
+               (sp.length?' · сидел '+sp.map(p=>khParts(p.s).t+'–'+(p.e?khParts(p.e).t:'…')).join(', '):'')+
+               (payer&&l.share!=null&&amt>l.share+0.004?' · свои '+money(l.share)+' + за других '+money(amt-l.share):'')+
+               (l.paid_by?(amt>0.004?' · часть платит ':' · платит ')+esc(cName(l.paid_by)):'')+
+               (owes(l) ? ' <span class="badge">в долг</span> <button class="rm w-only"'+
+                         ' style="margin:0 0 0 6px;padding:6px 11px;min-height:34px"'+
+                         ' data-pay1="'+e.id+'|'+l.id+'">Закрыть</button>'
+                        : (l.paid&&amt>0.004?' · оплачено':''))+'</div>';
+           }).join('')+
+           ((e.custLinks||[]).filter(owes).length>1
+             ? '<button class="rm w-only" data-payall="'+e.id+'" style="margin-top:10px">'+
+               'Оплатили все · закрыть смену</button>' : '')+
+           ((e.custLinks||[]).length && !(e.custLinks||[]).some(owes)
+             ? '<div style="padding-top:4px">смена оплачена полностью</div>' : '')+
+           (e.note?'<div>заметка: '+esc(e.note)+'</div>':'');
+  } else if(e.kind==='payout'){
+    cls=' out'; top='Выплата · '+esc(wName(e.worker_id));
+    sub=e.note?esc(e.note):'расчет с рабочим'; sum='−'+money(e.amount);
+    detail='<div>выдано на руки: '+esc(wName(e.worker_id))+'</div>';
+  } else if(e.kind==='income' || e.kind==='carry'){
+    const half=money(e.amount/2), inc=e.kind==='income';
+    top = inc ? 'Оплата от игроков' : 'Долг до начала учета';
+    sub = (e.note?esc(e.note)+' · ':'')+'по '+half+' операторам и кассе';
+    sum = (inc?'+':'')+money(e.amount);
+    detail = '<div>'+(inc?'игроки заплатили всего: ':'игроки должны всего: ')+money(e.amount)+'</div>'+
+      '<div>операторам — '+half+', кассе — '+half+'</div>'+
+      '<div>'+(inc?'без привязки к игроку и смене':'перенесено из заметок')+'</div>'+
+      (e.note?'<div>заметка: '+esc(e.note)+'</div>':'');
+  } else {
+    cls=' out'; top='Выдача кассы';
+    sub=e.note?esc(e.note):'касса передана'; sum='−'+money(e.amount);
+    detail='<div>передано из кассы</div>';
+  }
+  if(e.kind==='shift' && (e.custLinks||[]).some(owes)) cls+=' debt';
+  if(e.pending){ cls+=' pending'; detail='<div>ещё не отправлено в базу</div>'; }
+  const acts = e.pending
+    ? '<button class="d" data-drop="'+e.id+'">Убрать</button>'
+    : (e.kind==='shift'
+        ? '<button data-edit="'+e.id+'">Изменить</button>'
+        : '')+
+      '<button class="d" data-del="'+e.id+'" data-kind="'+e.kind+'">Удалить</button>';
+  return '<div class="entwrap w-only-acts" data-wrap="'+e.id+'">'+
+    '<div class="acts">'+acts+'</div>'+
+    '<div class="ent'+cls+(open?' open':'')+'" data-id="'+e.id+'">'+day+
+    '<div class="i"><div class="top">'+top+'</div><div class="sub">'+sub+'</div></div>'+
+    '<div class="s">'+sum+'</div><div class="chev">›</div></div></div>'+
+    '<div class="detail'+(open?' open':'')+'" data-det="'+e.id+'"><div class="in">'+detail+
+    (e.pending
+      ? '<button class="rm w-only" data-drop="'+e.id+'">Убрать из очереди</button>'
+      : (e.kind==='shift'
+          ? '<button class="rm w-only" data-edit="'+e.id+'" style="margin-right:7px">Изменить</button>'
+          : '')+
+        '<button class="rm w-only" data-del="'+e.id+'" data-kind="'+e.kind+'">Удалить</button>')+
+    '<div class="w-only" style="color:var(--g2);font-size:11.5px;padding-top:9px">'+
+      'то же самое — свайпом влево по записи</div>'+
+    '</div></div>';
+}
+
+/* ======================= СПИСКИ ======================= */
+function renderLists(){
+  document.getElementById('wlist').innerHTML = S.workers.length ? S.workers.map(w=>
+    '<div class="lrow'+(w.active?'':' off')+'"><span class="nm">'+esc(w.name)+(w.active?'':' · архив')+'</span>'+
+    '<button class="me'+(w.is_me?' on':'')+' w-only" data-me="'+w.id+'">'+(w.is_me?'это я':'я')+'</button>'+
+    '<button class="ren w-only" data-rw="'+w.id+'" aria-label="Переименовать">✎</button>'+
+    '<button class="del w-only" data-tw="'+w.id+'" aria-label="Архив">'+(w.active?'×':'↺')+'</button></div>').join('')
+    : '<div class="empty">Пусто</div>';
+  document.getElementById('clist').innerHTML = S.customers.length ? S.customers.map(c=>
+    '<div class="lrow'+(c.active?'':' off')+'"><span class="nm">'+esc(c.name)+(c.active?'':' · архив')+'</span>'+
+    '<button class="ren w-only" data-rc="'+c.id+'" aria-label="Переименовать">✎</button>'+
+    '<button class="del w-only" data-tc="'+c.id+'" aria-label="Архив">'+(c.active?'×':'↺')+'</button></div>').join('')
+    : '<div class="empty">Пусто</div>';
+}
+function renderAll(){ renderStrip(); renderChips(); renderPreview(); renderSummary();
+  renderList(); renderLists(); applyLock(); renderLive(); }
+
+/* ======================= ДЕЙСТВИЯ ======================= */
+function bump(){
+  const hv=document.getElementById('hval');
+  hv.classList.remove('bump'); void hv.offsetWidth; hv.classList.add('bump');
+  renderStrip(); renderPreview();
+}
+document.getElementById('minus').onclick=()=>{ if(hours>1){hours--;bump();} };
+document.getElementById('plus').onclick =()=>{ if(hours<72){hours++;bump();} };
+document.getElementById('time').oninput=function(){ renderPauseList(); renderPreview(); };
+document.getElementById('discount').oninput=renderPreview;
+document.getElementById('date').oninput=function(){ renderStrip(); renderPauseList(); renderPreview(); };
+function toggle(a,n){ const i=a.indexOf(n); if(i<0) a.push(n); else a.splice(i,1); }
+document.getElementById('wchips').onclick=e=>{ const b=e.target.closest('.chip'); if(!b||guard())return;
+  tap(8); toggle(selW,b.dataset.id);
+  if(selW.indexOf(b.dataset.id)<0) delete formWorkers[b.dataset.id];
+  renderChips(); renderPreview(); };
+document.getElementById('cchips').onclick=e=>{ const b=e.target.closest('.chip'); if(!b||guard())return;
+  tap(8); toggle(selC,b.dataset.id);
+  if(selC.indexOf(b.dataset.id)<0){ delete formPlayers[b.dataset.id]; if(formPayer===b.dataset.id) formPayer=null; }
+  renderChips(); renderPreview(); };
+
+document.getElementById('save').onclick=async function(){
+  if(guard()||shiftSaving)return;
+  shiftSaving=true;
+  try{ await saveShift(this); } finally{ shiftSaving=false; }
+};
+async function saveShift(btn){
+  const wasEdit=!!editId;
+  const c=calc(hours,selW.length,selC.length,document.getElementById('date').value,formDiscount());
+  const row={
+    work_date:document.getElementById('date').value,
+    start_time:document.getElementById('time').value||null,
+    hours:hours, total:c.total, kassa:c.kassa,
+    per_worker:c.perWorker, per_customer:c.perCustomer,
+    pause_min:formPause(), pause_log:formPauseLog(), discount:c.discount,
+    note:document.getElementById('note').value.trim()||null
+  };
+  const fw=formWindow(); row.ended_at=fw?new Date(fw.e).toISOString():null;
+  btn.disabled=true;
+
+  if(!online()){
+    if(wasEdit){ btn.disabled=false; toast('Правка недоступна без интернета'); return; }
+    enqueue({t:'shift',row:row,workers:selW.slice(),customers:selC.slice(),links:playerLinks(formSplit(c.total),formPayer),
+      wlinks:workerRows(formWorkerSplit(c.total/2))});
+    selC=[]; document.getElementById('note').value=''; clearExtras();
+    S.shifts=[]; S.ops=[];
+    loadCache(); applyPending(); renderAll(); renderOffbar();
+    tap(18); btn.disabled=false; btn.textContent='Сохранено локально ✓';
+    setTimeout(renderPreview,1600);
+    toast('Нет сети — смена уйдёт, когда связь появится');
+    return;
+  }
+
+  const sid=editId||newId();
+  const wl=workerRows(formWorkerSplit(c.total/2)), cl=selC.length?playerLinks(formSplit(c.total),formPayer):[];
+  // правка: у того, кто уже заплатил, сумма выросла — оставить «оплачено» или снова в долг
+  if(wasEdit) for(const l of cl){
+    const was=editAmt[l.customer_id];
+    if(editPaid[l.customer_id] && was!=null && l.amount>was+0.005 &&
+       !await ask(cName(l.customer_id)+': было '+money(was)+', стало '+money(l.amount)+'. Он уже платил.\n\n'+
+                  'OK — оставить «оплачено». Отмена — снова в долг на '+money(l.amount)+'.')) l.keep_paid=false;
+  }
+  // смена и люди — одной записью: при обрыве сети не останется смены без людей и долгов
+  const {error}=await sb.rpc('save_shift',{p_id:sid, p_shift:row, p_workers:wl, p_customers:cl, p_edit:wasEdit});
+  if(error){ btn.disabled=false; return fail(error, wasEdit?'Изменения не сохранены':'Смена не записана'); }
+
+  // уведомление в Telegram — не мешает записи, если не сработает
+  sb.functions.invoke('notify-shift',{body:{shift_id:sid,mode:wasEdit?'edit':'new'}}).catch(function(){});
+
+  if(wasEdit) stopEdit(); else { selC=[]; document.getElementById('note').value=''; clearExtras(); }
+  await loadAll(); renderAll();
+  tap(18);
+  btn.disabled=false;
+  btn.textContent = wasEdit ? 'Сохранено ✓' : 'Записано ✓';
+  if(!reduce()){ btn.classList.remove('done'); void btn.offsetWidth; btn.classList.add('done'); }
+  setTimeout(function(){ btn.classList.remove('done'); renderPreview(); },1500);
+  toast(wasEdit ? 'Смена изменена' : 'Смена на '+money(c.total)+' записана');
+}
+
+document.getElementById('periodSeg').onclick=e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  period=b.dataset.p;
+  document.querySelectorAll('#periodSeg button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  renderSummary();
+};
+document.getElementById('v-sum').addEventListener('click',async e=>{
+  // раскрыть долг кастомера
+  const drow=e.target.closest('[data-debtrow]');
+  if(drow && !e.target.closest('button')){
+    const id=drow.dataset.debtrow;
+    openDebt = openDebt===id ? null : id;
+    document.querySelectorAll('[data-dg]').forEach(x=>x.classList.toggle('open',x.dataset.dg===openDebt));
+    document.querySelectorAll('[data-debtrow]').forEach(x=>
+      x.classList.toggle('open',x.dataset.debtrow===openDebt));
+    return;
+  }
+  // закрыть долг за одну игру
+  const one=e.target.closest('[data-pay1]');
+  if(one){
+    if(guard())return;
+    const parts=one.dataset.pay1.split('|');
+    const {error}=await sb.from('shift_customers')
+      .update({paid:true,paid_at:new Date().toISOString()})
+      .eq('shift_id',parts[0]).eq('customer_id',parts[1]);
+    if(error) return fail(error,'Не отметилось');
+    tap(18); await loadAll(); renderAll(); toast('Игра закрыта');
+    return;
+  }
+  const debt=e.target.closest('[data-debt]');
+  if(debt){
+    if(guard())return;
+    const id=debt.dataset.debt, bb=balances();
+    if(!await ask(cName(id)+' рассчитался полностью на '+money(bb.debt[id])+'?')) return;
+    const {error}=await sb.from('shift_customers')
+      .update({paid:true,paid_at:new Date().toISOString()})
+      .eq('customer_id',id).eq('paid',false);
+    if(error) return fail(error,'Не отметилось');
+    tap(18); await loadAll(); renderAll(); toast(cName(id)+' — долг закрыт');
+    return;
+  }
+  const pay=e.target.closest('[data-pay]'), exp=e.target.closest('[data-exp]'), inc=e.target.closest('[data-inc]');
+  if(!pay&&!exp&&!inc) return;
+  if(guard())return;
+  if(pay) openOp('payout',pay.dataset.pay); else openOp(inc?'income':'expense',null);
+});
+
+document.getElementById('list').onclick=async e=>{
+  const one=e.target.closest('[data-pay1]');
+  if(one){
+    if(guard())return;
+    const parts=one.dataset.pay1.split('|');
+    const {error}=await sb.from('shift_customers')
+      .update({paid:true,paid_at:new Date().toISOString()})
+      .eq('shift_id',parts[0]).eq('customer_id',parts[1]);
+    if(error) return fail(error,'Не отметилось');
+    tap(18); await loadAll(); renderAll(); toast('Оплата отмечена');
+    return;
+  }
+  // вся смена оплачена: закрываем долг всем её участникам сразу
+  const allp=e.target.closest('[data-payall]');
+  if(allp){
+    if(guard())return;
+    const sid=allp.dataset.payall;
+    const sh=S.shifts.find(x=>x.id===sid);
+    const n=(sh&&sh.custLinks||[]).filter(owes).length;
+    if(!await ask('Отметить оплату всей смены? Закроется долг у '+n+' участников.')) return;
+    const {error}=await sb.from('shift_customers')
+      .update({paid:true,paid_at:new Date().toISOString()})
+      .eq('shift_id',sid).eq('paid',false);
+    if(error) return fail(error,'Не отметилось');
+    tap(18); await loadAll(); renderAll(); toast('Смена закрыта полностью');
+    return;
+  }
+  const drop=e.target.closest('[data-drop]');
+  if(drop){
+    if(!await ask('Убрать незаписанную смену из очереди?')) return;
+    queue=queue.filter(q=>q.id!==drop.dataset.drop); saveQueue();
+    S.shifts=S.shifts.filter(x=>x.id!==drop.dataset.drop);
+    S.ops=S.ops.filter(x=>x.id!==drop.dataset.drop);
+    openId=null; renderAll(); renderOffbar(); toast('Убрано из очереди');
+    return;
+  }
+  const ed=e.target.closest('[data-edit]');
+  if(ed){ if(guard())return; startEdit(ed.dataset.edit); return; }
+
+  const del=e.target.closest('[data-del]');
+  if(del){
+    if(guard())return;
+    if(!await ask('Удалить запись?')) return;
+    const id=del.dataset.del, isShift=del.dataset.kind==='shift';
+    // сообщение об отмене шлём до удаления, пока данные ещё в базе
+    if(isShift){
+      try{ await sb.functions.invoke('notify-shift',{body:{shift_id:id,mode:'cancel'}}); }catch(_){}
+    }
+    const {error}= isShift
+      ? await sb.from('shifts').delete().eq('id',id)
+      : await sb.from('ops').delete().eq('id',id);
+    if(error) return fail(error,'Не удалилось');
+    if(editId===id) stopEdit();
+    openId=null; await loadAll(); renderAll(); toast('Запись удалена');
+    return;
+  }
+  const row=e.target.closest('.ent'); if(!row)return;
+  openId = openId===row.dataset.id ? null : row.dataset.id;
+  document.querySelectorAll('[data-det]').forEach(d=>d.classList.toggle('open',d.dataset.det===openId));
+  document.querySelectorAll('.ent').forEach(r=>r.classList.toggle('open',r.dataset.id===openId));
+};
+
+function reportText(){
+  const b=balances(), lines=['УЧЕТ','Касса — не роздано: '+money(b.kassa)];
+  if(b.debtTotal>0.005){
+    lines.push('Должны игроки: '+money(b.debtTotal)+' (операторам '+money(b.debtTotal/2)+')');
+    Object.keys(b.debt).filter(k=>b.debt[k]>0.005)
+      .forEach(k=>lines.push('  · '+cName(k)+' — '+money(b.debt[k])+' по сменам'));
+    if(Math.abs(b.common)>0.005) lines.push('  · общие оплаты и долг до учета — '+money(b.common));
+  }
+  S.workers.filter(w=>w.active).forEach(w=>
+    lines.push(w.name+' — к выплате '+money((b.acc[w.id]||0)-(b.paid[w.id]||0))));
+  lines.push('');
+  entries().slice(0,60).forEach(e=>{
+    const d=String(e.date).split('-'), day=Number(d[2])+' '+MON[Number(d[1])-1];
+    if(e.kind==='shift') lines.push(day+(e.start_time?' '+hhmm(e.start_time):'')+' — '+e.hours+'ч'+
+      (e.pause_min?' (пауза '+pauseText(e.pause_min)+(pauseSpans(e.pause_log).length?': '+spansLine(e.pause_log,0):'')+')':'')+', '+
+      e.workerIds.map(wName).join('/')+(e.customerIds.length?' ('+e.customerIds.map(cName).join('+')+')':'')+
+      ' — '+money(e.total)+(Number(e.discount)?' (скидка '+money(e.discount)+')':''));
+    else if(e.kind==='payout') lines.push(day+' — выплата '+wName(e.worker_id)+' '+money(e.amount));
+    else if(e.kind==='income') lines.push(day+' — оплата от игроков '+money(e.amount)+
+      ' (операторам '+money(e.amount/2)+')'+(e.note?' — '+e.note:''));
+    else if(e.kind==='carry') lines.push(day+' — долг до начала учета '+money(e.amount)+
+      ' (операторам '+money(e.amount/2)+')');
+    else lines.push(day+' — выдача кассы '+money(e.amount)+(e.note?' ('+e.note+')':''));
+  });
+  return lines.join('\n');
+}
+function renderFltSheet(){
+  document.querySelectorAll('#fType button').forEach(x=>
+    x.setAttribute('aria-pressed', x.dataset.t===flt.type));
+  document.querySelectorAll('#fDebt button').forEach(x=>
+    x.setAttribute('aria-pressed', (x.dataset.d==='1')===flt.debt));
+  document.getElementById('fWork').innerHTML=
+    '<button class="chip" data-w="" aria-pressed="'+(!flt.worker)+'">Все</button>'+
+    S.workers.map(w=>'<button class="chip" data-w="'+w.id+'" aria-pressed="'+(flt.worker===w.id)+'">'+
+      esc(w.name)+'</button>').join('');
+  document.getElementById('fCust').innerHTML=
+    '<button class="chip" data-c="" aria-pressed="'+(!flt.customer)+'">Все</button>'+
+    S.customers.map(c=>'<button class="chip" data-c="'+c.id+'" aria-pressed="'+(flt.customer===c.id)+'">'+
+      esc(c.name)+'</button>').join('');
+  const n=applyFilter(entries()).length;
+  document.getElementById('fltLead').textContent='Подходит записей: '+n;
+}
+document.getElementById('fltBtn').onclick=()=>{ renderFltSheet(); openSheet('fltSheet'); };
+document.getElementById('fType').onclick=e=>{
+  const b=e.target.closest('button'); if(!b)return; flt.type=b.dataset.t; renderFltSheet(); };
+document.getElementById('fDebt').onclick=e=>{
+  const b=e.target.closest('button'); if(!b)return; flt.debt=b.dataset.d==='1'; renderFltSheet(); };
+document.getElementById('fWork').onclick=e=>{
+  const b=e.target.closest('.chip'); if(!b)return; flt.worker=b.dataset.w; renderFltSheet(); };
+document.getElementById('fCust').onclick=e=>{
+  const b=e.target.closest('.chip'); if(!b)return; flt.customer=b.dataset.c; renderFltSheet(); };
+document.getElementById('fltApply').onclick=()=>{ renderList(); closeSheets(); tap(8); };
+document.getElementById('fltReset').onclick=()=>{
+  flt={type:'all',worker:'',customer:'',debt:false}; renderFltSheet(); renderList(); closeSheets(); };
+document.getElementById('fltInfo').onclick=e=>{
+  if(e.target.id!=='fltClear')return;
+  flt={type:'all',worker:'',customer:'',debt:false}; renderList(); };
+
+document.getElementById('copy').onclick=async()=>{
+  const txt=reportText();
+  if(await copyText(txt)){ tap(18); toast('Отчет скопирован'); }
+  else showText('Отчет',txt);
+};
+
+/* ======================= ШТОРКИ ======================= */
+function openSheet(id){
+  document.getElementById('scrim').classList.add('on');
+  document.getElementById(id).classList.add('on');
+  syncBack();
+}
+// закрыть одну шторку поверх другой (имя, текст) — нижняя остается открытой
+function closeSheet(id){
+  document.getElementById(id).classList.remove('on');
+  if(!document.querySelector('.sheet.on')) document.getElementById('scrim').classList.remove('on');
+  syncBack();
+}
+function closeSheets(){
+  document.getElementById('scrim').classList.remove('on');
+  document.querySelectorAll('.sheet.on').forEach(s=>s.classList.remove('on'));
+  if(nameDone) endName(null);
+  syncBack();
+  if(gated && locked) closeGate(gated);   // передумал входить — снова закрытый экран
+}
+document.getElementById('textClose').onclick=()=>closeSheet('textSheet');
+
+let nameDone=null;
+function askName(cur){
+  return new Promise(function(res){
+    nameDone=res;
+    document.getElementById('nameInp').value=cur;
+    openSheet('nameSheet');
+  });
+}
+function endName(v){
+  closeSheet('nameSheet');
+  const f=nameDone; nameDone=null;
+  if(f) f(v);
+}
+document.getElementById('nameSave').onclick=()=>endName(document.getElementById('nameInp').value);
+document.getElementById('nameCancel').onclick=()=>endName(null);
+document.getElementById('nameInp').onkeydown=e=>{ if(e.key==='Enter') endName(e.target.value); };
+document.getElementById('scrim').onclick=closeSheets;
+document.getElementById('opCancel').onclick=closeSheets;
+document.getElementById('setClose').onclick=closeSheets;
+document.getElementById('gear').onclick=()=>{ openSheet('setSheet'); loadMembers(); };
+document.getElementById('sync').onclick=async()=>{
+  const b=document.getElementById('sync');
+  b.classList.add('spin'); setTimeout(()=>b.classList.remove('spin'),700);
+  try{ await refreshAuth(); await loadAll(); applyLock(); renderAll(); toast('Обновлено'); }
+  catch(e){ if(e&&e.gate) closeGate(e.gate); else toast('Не удалось обновить'); }
+};
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeSheets(); });
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ scheduleReload(); checkUpdate(); } });
+
+function openOp(kind,workerId){
+  opCtx={kind,workerId};
+  const b=balances(), inc=kind==='income';
+  // оплату пишем как в заметках — операторскую часть; касса получает столько же
+  const due = kind==='payout' ? (b.acc[workerId]||0)-(b.paid[workerId]||0) : inc ? b.debtTotal/2 : b.kassa;
+  document.getElementById('opTitle').textContent =
+    kind==='payout' ? 'Выплата · '+wName(workerId) : inc ? 'Оплата от игроков' : 'Выдача кассы';
+  document.getElementById('opLead').textContent = kind==='payout' ? 'К выплате сейчас: '+money(due)
+    : inc ? 'Должны сейчас операторам '+money(due)+' и столько же кассе. Кто за кого платил — не важно.'
+    : 'В кассе к передаче: '+money(b.kassa);
+  document.getElementById('opAmtCap').textContent = inc ? 'Операторам — как в заметках' : 'Сумма';
+  opCtx.due=due;
+  // за что выдаем: смены, деньги которых еще не розданы. Оплаченные игроками — уже розданы на месте
+  let why='';
+  if(!inc){
+    const open=S.shifts.filter(s=>!s.pending && openShare(s)>0.0005 && (kind!=='payout'||s.workerIds.indexOf(workerId)>=0))
+      .slice(0,6).map(s=>{
+        const op=openShare(s), part=(kind==='payout'?workerShare(s,workerId):s.kassa)*op, p=String(s.work_date).split('-');
+        return Number(p[2])+' '+MON[Number(p[1])-1]+' — '+money(part)+' · '+((s.custLinks||[]).length?'игроки не заплатили':'без кастомеров');
+      });
+    why=(open.length?'Не роздано по сменам:<br>'+open.map(esc).join('<br>')+'<br>':'')+
+      'Смены, которые игроки уже оплатили, считаются розданными — за них выдавать не нужно.';
+  }
+  document.getElementById('opWhy').innerHTML=why;
+  document.getElementById('opNote').placeholder = inc ? 'Кто передал, необязательно' : 'Кому отдал, необязательно';
+  document.getElementById('opAmt').value='';
+  document.getElementById('opNote').value='';
+  document.getElementById('opDate').value=today();
+  document.getElementById('opQuick').innerHTML = due>0
+    ? '<button data-q="'+due+'">Всё: '+money(due)+'</button><button data-q="'+(due/2)+'">Половина</button>' : '';
+  opSplit();
+  openSheet('opSheet');
+}
+function opSplit(){
+  const a=parseAmt(document.getElementById('opAmt').value);
+  document.getElementById('opSplit').textContent = opCtx && opCtx.kind==='income' && a>0
+    ? 'От игроков всего '+money(a*2)+': операторам '+money(a)+', в кассу '+money(a) : '';
+}
+document.getElementById('opAmt').oninput=opSplit;
+document.getElementById('opQuick').onclick=e=>{
+  const b=e.target.closest('[data-q]'); if(!b)return;
+  document.getElementById('opAmt').value=String(Math.round(Number(b.dataset.q)*100)/100).replace('.',',');
+  opSplit();
+};
+document.getElementById('opSave').onclick=async function(){
+  if(guard()||opSaving)return;
+  opSaving=true; this.disabled=true;
+  try{ await saveOp(); } finally{ opSaving=false; this.disabled=false; }
+};
+async function saveOp(){
+  const amt=parseAmt(document.getElementById('opAmt').value);
+  if(!amt||amt<=0){ toast('Введи сумму'); return; }
+  // больше, чем к выдаче, — скорее всего, за смену, которую игроки уже оплатили
+  if(opCtx.kind!=='income' && amt>Math.max(0,opCtx.due||0)+0.005 &&
+     !await ask('Это больше, чем к выдаче сейчас ('+money(Math.max(0,opCtx.due||0))+'). Деньги за смены, которые игроки уже оплатили, считаются розданными — второй раз их выдавать не нужно.\n\nВсё равно записать '+money(amt)+'?')) return;
+  const opRow={
+    kind:opCtx.kind, worker_id:opCtx.workerId||null, amount:opCtx.kind==='income'?amt*2:amt,
+    op_date:document.getElementById('opDate').value||today(),
+    note:document.getElementById('opNote').value.trim()||null
+  };
+  if(!online()){
+    enqueue({t:'op',row:opRow});
+    S.shifts=[]; S.ops=[]; loadCache(); applyPending();
+    renderAll(); renderOffbar(); closeSheets();
+    toast('Нет сети — запись уйдёт позже');
+    return;
+  }
+  const {error}=await sb.from('ops').insert(opRow);
+  if(error) return fail(error,'Не записалось');
+  tap(18);
+  await loadAll(); renderAll(); closeSheets();
+  toast(opCtx.kind==='payout' ? 'Выплата '+money(amt)+' записана'
+    : opCtx.kind==='income' ? 'Оплата записана: операторам '+money(amt)+', в кассу '+money(amt)
+    : 'Выдача кассы '+money(amt)+' записана');
+}
+
+/* ======================= СПИСКИ: ПРАВКА ======================= */
+async function renameIn(table,id,cur){
+  const v=await askName(cur);
+  if(v===null) return;
+  const name=v.trim();
+  if(!name || name===cur) return;
+  const {error}=await sb.from(table).update({name:name}).eq('id',id);
+  if(error) return fail(error,/duplicate/i.test(error.message||'')?'Такое имя уже есть':'Не переименовалось');
+  tap(8); await loadAll(); renderAll(); toast('Теперь: '+name);
+}
+document.getElementById('wlist').onclick=async e=>{
+  const ren=e.target.closest('[data-rw]');
+  if(ren){
+    if(guard())return;
+    const w=S.workers.find(x=>x.id===ren.dataset.rw);
+    return renameIn('workers',w.id,w.name);
+  }
+  const me=e.target.closest('[data-me]'), tw=e.target.closest('[data-tw]');
+  if(!me&&!tw) return;
+  if(guard())return;
+  if(me){
+    const w=S.workers.find(x=>x.id===me.dataset.me), val=!w.is_me;
+    await sb.from('workers').update({is_me:false}).neq('id','00000000-0000-0000-0000-000000000000');
+    if(val){ const {error}=await sb.from('workers').update({is_me:true}).eq('id',w.id); if(error) return fail(error); }
+  } else {
+    const w=S.workers.find(x=>x.id===tw.dataset.tw);
+    const {error}=await sb.from('workers').update({active:!w.active}).eq('id',w.id);
+    if(error) return fail(error);
+    if(w.active) selW=selW.filter(x=>x!==w.id);
+  }
+  await loadAll(); renderAll();
+};
+document.getElementById('clist').onclick=async e=>{
+  const ren=e.target.closest('[data-rc]');
+  if(ren){
+    if(guard())return;
+    const c=S.customers.find(x=>x.id===ren.dataset.rc);
+    return renameIn('customers',c.id,c.name);
+  }
+  const tc=e.target.closest('[data-tc]'); if(!tc) return;
+  if(guard())return;
+  const c=S.customers.find(x=>x.id===tc.dataset.tc);
+  const {error}=await sb.from('customers').update({active:!c.active}).eq('id',c.id);
+  if(error) return fail(error);
+  if(c.active) selC=selC.filter(x=>x!==c.id);
+  await loadAll(); renderAll();
+};
+async function addTo(table,input){
+  if(guard())return;
+  const v=input.value.trim(); if(!v)return;
+  const {error}=await sb.from(table).insert({name:v});
+  if(error) return fail(error,/duplicate/i.test(error.message||'')?'Такое имя уже есть':'Не добавилось');
+  input.value=''; await loadAll(); renderAll(); toast('Добавлено: '+v);
+}
+document.getElementById('wadd').onclick=()=>addTo('workers',document.getElementById('waddi'));
+document.getElementById('cadd').onclick=()=>addTo('customers',document.getElementById('caddi'));
+document.getElementById('waddi').onkeydown=e=>{ if(e.key==='Enter') addTo('workers',e.target); };
+document.getElementById('caddi').onkeydown=e=>{ if(e.key==='Enter') addTo('customers',e.target); };
+
+/* ======================= ВЫГРУЗКА ======================= */
+async function download(name,text,mime){
+  // в Telegram на телефоне файл из мини-аппа не скачать — его присылает бот в личку
+  if(TG){
+    toast('Отправляю файл в чат с ботом…');
+    try{
+      const {data,error}=await sb.functions.invoke('send-file',{body:{initData:TG.initData,name:name,text:text}});
+      if(!error && data && data.ok){ tap(18); toast('Файл '+name+' в чате с ботом'); return; }
+      const m=(data&&data.error)||'';
+      toast(/initiate|blocked/i.test(m) ? 'Сначала напиши боту /start' : 'Не отправилось'+(m?': '+m:''));
+    }catch(e){ toast('Не отправилось — нет связи'); }
+    return;
+  }
+  try{
+    const blob=new Blob([text],{type:mime+';charset=utf-8'});
+    const url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download=name; document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },1000);
+    toast('Файл '+name+' сохранен');
+  }catch(e){ showText(name,text); }
+}
+if(TG){
+  document.getElementById('dlCsv').textContent='Прислать таблицу в чат (.csv)';
+  document.getElementById('dlJson').textContent='Прислать копию в чат (.json)';
+}
+function csvText(){
+  const q=v=>{ let t=String(v==null?'':v); if(typeof v==='string' && /^[=+\-@\t\r]/.test(t)) t="'"+t;
+    return '"'+t.replace(/"/g,'""')+'"'; };
+  const rows=[['Тип','Дата','Начало','Конец','Часы','Рабочие','Кастомеры',
+               'Сумма','В кассу','Каждому рабочему','С кастомера','Оплата','Заметка','Пауза, мин','Скидка','Паузы']];
+  entries().slice().reverse().forEach(e=>{
+    if(e.kind==='shift') rows.push(['Смена',e.date,hhmm(e.start_time),
+      e.start_time?shiftEnd(e):'',e.hours,
+      e.workerIds.map(wName).join(' / '),e.customerIds.map(cName).join(' + '),
+      e.total,e.kassa,e.per_worker,e.per_customer,
+      (e.custLinks||[]).map(l=>cName(l.id)+': '+(l.paid_by&&!(Number(l.amount)>0.004)?'платит '+cName(l.paid_by):(l.paid?'оплачено':'в долг')+' '+l.amount)).join('; '),
+      e.note||'',e.pause_min||0,Number(e.discount)||0,spansLine(e.pause_log,0).replace(/, /g,'; ')]);
+    else if(e.kind==='payout') rows.push(['Выплата',e.date,'','','',wName(e.worker_id),'',-e.amount,'','','','',e.note||'']);
+    else if(e.kind==='income') rows.push(['Оплата от игроков',e.date,'','','','','',-e.amount,-e.amount/2,'','','',e.note||'']);
+    else if(e.kind==='carry') rows.push(['Долг до начала учета',e.date,'','','','','',e.amount,e.amount/2,'','','',e.note||'']);
+    else rows.push(['Выдача кассы',e.date,'','','','','',-e.amount,-e.amount,'','','',e.note||'']);
+  });
+  const b=balances();
+  rows.push([]); rows.push(['ИТОГО']);
+  rows.push(['Касса к передаче','','','','','','',b.kassa]);
+  S.workers.forEach(w=>rows.push(['К выплате',w.name,'','','','','',(b.acc[w.id]||0)-(b.paid[w.id]||0)]));
+  return '\ufeff'+rows.map(r=>r.map(q).join(';')).join('\r\n');
+}
+// новая версия учета — та же база; адрес с данными Telegram сохраняем
+document.getElementById('tryNext').onclick=()=>{ location.href='../'+location.hash; };
+document.getElementById('dlCsv').onclick=()=>download('uchet-'+today()+'.csv',csvText(),'text/csv');
+document.getElementById('dlJson').onclick=()=>download('uchet-'+today()+'.json',
+  JSON.stringify({app:'uchet',savedAt:new Date().toISOString(),data:S},null,2),'application/json');
+
+/* ======================= ПОЯВЛЕНИЕ ПРИ ПРОКРУТКЕ ======================= */
+let revealObs=null;
+function initReveal(){
+  if(reduce() || !('IntersectionObserver' in window)) return;
+  revealObs=new IntersectionObserver(function(items){
+    items.forEach(function(it){
+      if(it.isIntersecting){ it.target.classList.add('seen'); revealObs.unobserve(it.target); }
+    });
+  },{rootMargin:'0px 0px -8% 0px',threshold:0.06});
+  watchReveal();
+}
+function watchReveal(){
+  if(!revealObs) return;
+  document.querySelectorAll('.view.on .group:not(.seen):not(.reveal)').forEach(function(el){
+    el.classList.add('reveal'); revealObs.observe(el);
+    // если наблюдатель почему-то не сработает, карточка всё равно проявится
+    setTimeout(function(){ el.classList.add('seen'); },1200);
+  });
+}
+
+/* ======================= ЖЕСТ ПО ЗАПИСИ ======================= */
+(function(){
+  let sx=0, sy=0, id=null, moved=false, horiz=false;
+  const list=document.getElementById('list');
+  function closeAll(except){
+    document.querySelectorAll('.entwrap.open').forEach(function(w){
+      if(w!==except) w.classList.remove('open');
+    });
+  }
+  list.addEventListener('touchstart',function(e){
+    if(locked) return;
+    const w=e.target.closest('.entwrap'); if(!w) return;
+    sx=e.touches[0].clientX; sy=e.touches[0].clientY;
+    id=w; moved=false; horiz=false;
+  },{passive:true});
+  list.addEventListener('touchmove',function(e){
+    if(!id) return;
+    const dx=e.touches[0].clientX-sx, dy=e.touches[0].clientY-sy;
+    if(!moved){
+      moved=true;
+      horiz=Math.abs(dx)>Math.abs(dy)*1.4;
+    }
+    if(!horiz) return;
+    if(dx<-28){ closeAll(id); id.classList.add('open'); }
+    if(dx>28)  id.classList.remove('open');
+  },{passive:true});
+  list.addEventListener('touchend',function(){ id=null; },{passive:true});
+  // мышью на компьютере: клик по строке открытой записи закрывает действия
+  list.addEventListener('click',function(e){
+    if(e.target.closest('.acts')) return;
+    const w=e.target.closest('.entwrap');
+    if(w && w.classList.contains('open')){
+      w.classList.remove('open');
+      e.stopPropagation(); e.preventDefault();
+    } else closeAll(null);
+  },true);
+})();
+
+/* ======================= ПРАВКА СМЕНЫ ======================= */
+function goTab(name){
+  const b=document.querySelector('.tabs button[data-v="'+name+'"]');
+  if(b) b.click();
+}
+function startEdit(id){
+  const sh=S.shifts.find(x=>x.id===id);
+  if(!sh) return;
+  editId=id;
+  // кто из кастомеров уже заплатил — после правки так и остается оплаченным
+  editPaid={}; editAmt={};
+  (sh.custLinks||[]).forEach(l=>{ if(l.paid) editPaid[l.id]=l.paid_at||new Date().toISOString(); editAmt[l.id]=l.amount; });
+  hours=sh.hours;
+  document.getElementById('date').value=sh.work_date;
+  document.getElementById('time').value=hhmm(sh.start_time);
+  selW=sh.workerIds.slice();
+  formWorkers={}; document.getElementById('workersList').dataset.key='';
+  (sh.workerLinks||[]).forEach(function(w){
+    const sp=pauseSpans(w.spans).map(p=>({s:p.s,e:p.e||p.s}));
+    if(sp.length) formWorkers[w.id]={orig:sp, s:khParts(sp[0].s).t, e:khParts(sp[sp.length-1].e).t, dirty:false};
+  });
+  selC=(sh.custLinks||[]).map(l=>l.id);
+  formPlayers={}; formPayer=null; document.getElementById('playersList').dataset.key='';
+  (sh.custLinks||[]).forEach(function(l){
+    const sp=pauseSpans(l.spans).map(p=>({s:p.s,e:p.e||p.s}));
+    if(sp.length) formPlayers[l.id]={orig:sp, s:khParts(sp[0].s).t, e:khParts(sp[sp.length-1].e).t, dirty:false};
+    if(l.paid_by) formPayer=l.paid_by;
+  });
+  document.getElementById('note').value=sh.note||'';
+  const sp=pauseSpans(sh.pause_log);
+  formPauses=sp.map(p=>({s:khParts(p.s).t, e:p.e?khParts(p.e).t:''}));
+  formPauseExtra=Math.max(0,(sh.pause_min||0)-Math.round(sp.reduce((a,p)=>a+((p.e||p.s)-p.s),0)/60e3));
+  renderPauseList();
+  document.getElementById('discount').value=Number(sh.discount)>0 ? String(Number(sh.discount)).replace('.',',') : '';
+  const p=String(sh.work_date).split('-');
+  document.getElementById('editWhen').textContent =
+    'от '+Number(p[2])+' '+MON[Number(p[1])-1]+(sh.start_time?', '+hhmm(sh.start_time):'');
+  document.getElementById('editBar').style.display='flex';
+  openId=null;
+  // конец смены: записанный, а у старых смен из таймера — по самому позднему отрезку, если он позже
+  const s0=khToMs(sh.work_date,hhmm(sh.start_time)||'00:00'), e0=s0+(sh.hours*60+(sh.pause_min||0))*60e3;
+  const last=[].concat(...(sh.workerLinks||[]).map(w=>pauseSpans(w.spans)), ...(sh.custLinks||[]).map(l=>pauseSpans(l.spans)),
+    pauseSpans(sh.pause_log)).reduce((a,p)=>Math.max(a,p.e||p.s),0);
+  const end=sh.ended_at?Date.parse(sh.ended_at):(last>e0?last:0);
+  editEnd=sh.start_time&&end ? {key:whenKey(), e:end} : null;
+  renderStrip(); renderChips(); renderPreview(); renderList();
+  goTab('new');
+}
+function stopEdit(){
+  editId=null; editEnd=null;
+  document.getElementById('editBar').style.display='none';
+  document.getElementById('note').value=''; clearExtras();
+  selC=[]; hours=6; resetWhen();
+  const me=S.workers.find(w=>w.is_me&&w.active); selW=(!locked&&me)?[me.id]:[];
+  renderStrip(); renderChips(); renderPreview();
+}
+document.getElementById('editCancel').onclick=stopEdit;
+
+/* ======================= ЖИВОЙ СЛОЙ ======================= */
+// перекидные цифры: каждая цифра — барабан, крутится с прошлого значения на новое
+function flipTo(host,text){
+  if(!host) return;
+  if(host.dataset.txt===text) return;
+  const prev=host.dataset.txt||'';
+  host.dataset.txt=text;
+  if(reduce()){ host.textContent=text; return; }
+  const chars=String(text).split('');
+  const sameShape = prev.length===chars.length &&
+    prev.split('').every((c,i)=>/[0-9]/.test(c)===/[0-9]/.test(chars[i]));
+  if(!sameShape){
+    host.innerHTML=chars.map(function(ch){
+      if(/[0-9]/.test(ch)){
+        return '<span class="col"><span class="reel">'+
+          '0123456789'.split('').map(d=>'<span>'+d+'</span>').join('')+'</span></span>';
+      }
+      return '<span class="ch">'+(ch===' '?'&nbsp;':ch)+'</span>';
+    }).join('');
+  }
+  const reels=host.querySelectorAll('.reel');
+  let k=0;
+  chars.forEach(function(ch){
+    if(!/[0-9]/.test(ch)) return;
+    const r=reels[k++]; if(!r) return;
+    r.style.transitionDelay=(k*45)+'ms';
+    requestAnimationFrame(()=>{ r.style.transform='translateY(-'+(Number(ch)*10)+'%)'; });
+  });
+}
+
+// афиша: главное число и три постоянных показателя рядом
+let lastKassa=null;
+function renderBoard(b,shiftCount,hrs){
+  const board=document.getElementById('board');
+  const empty = !S.shifts.length && !S.ops.length && !booting;
+  board.classList.toggle('fresh',empty);
+
+  const now=Math.round(b.kassa*100)/100;
+  if(lastKassa!==null && lastKassa!==now && !reduce()){
+    board.classList.remove('flash'); void board.offsetWidth; board.classList.add('flash');
+    setTimeout(()=>board.classList.remove('flash'),1000);
+  }
+  lastKassa=now;
+
+  flipTo(document.getElementById('boardVal'), money(b.kassa));
+  const owed=S.workers.filter(w=>w.active)
+    .reduce((a,w)=>a+((b.acc[w.id]||0)-(b.paid[w.id]||0)),0);
+  document.getElementById('boardStats').innerHTML=
+    '<div class="b1'+(b.debtTotal>0.005?' debt':'')+'"><span class="v">'+money(b.debtTotal)+
+      '</span><span class="c">должны игроки</span></div>'+
+    '<div class="b1"><span class="v">'+money(owed)+'</span><span class="c">работникам</span></div>'+
+    '<div class="b1"><span class="v">'+money(b.handed)+'</span><span class="c">уже роздано</span></div>';
+}
+document.getElementById('board').addEventListener('click',function(e){
+  if(e.target.closest('[data-exp]')){ if(guard())return; openOp('expense',null); }
+  if(e.target.closest('[data-inc]')){ if(guard())return; openOp('income',null); }
+});
+
+// липкая шапка появляется при прокрутке
+let lastTop=false;
+window.addEventListener('scroll',function(){
+  const on=window.scrollY>150;
+  if(on!==lastTop){ lastTop=on; document.getElementById('topbar').classList.toggle('on',on); }
+},{passive:true});
+
+// короткий отклик на важные действия
+// в Telegram — его отклик (на iPhone navigator.vibrate нет вовсе)
+function tap(ms){
+  try{
+    if(tgv('6.1')){
+      if((ms||12)>=18) TG.HapticFeedback.notificationOccurred('success');
+      else TG.HapticFeedback.selectionChanged();
+      return;
+    }
+    if(navigator.vibrate) navigator.vibrate(ms||12);
+  }catch(e){}
+}
+
+/* ======================= ТАЙМЕР: ЖИВАЯ СМЕНА ======================= */
+// Живые смены лежат в базе (live_shifts): старт, паузы и конец ставит сервер своим временем,
+// поэтому таймер верный после перезагрузки, на другом телефоне и при сбитых часах.
+// Смен может идти несколько — у каждой своя карточка.
+let liveW=null;   // операторы для новой смены
+const liveRows=()=>(S.live||[]).slice().sort((a,b)=>Date.parse(a.started_at)-Date.parse(b.started_at));
+const liveWorkers=l=>(l.worker_ids||[]).filter(id=>l.finished_at||liveWorking(l,id)).map(wName).map(esc).join(', ')||'—';
+
+// Игроки живой смены: нажал — сел (время сервера), еще раз — встал. Кто сидел — видно со временем.
+const liveLog=l=>Array.isArray(l.customer_log)?l.customer_log:[];
+const liveSeated=(l,id)=>liveLog(l).some(x=>x.id===id&&!x.e) ||
+  (!l.finished_at && (l.customer_ids||[]).indexOf(id)>=0 && !liveLog(l).some(x=>x.id===id));
+function livePresence(l){
+  const log=liveLog(l);
+  return (l.customer_ids||[]).map(function(id){
+    const mine=log.filter(x=>x.id===id);
+    return esc(cName(id))+' '+(mine.length ? mine.map(x=>x.e ? khParts(Date.parse(x.s)).t+'–'+khParts(Date.parse(x.e)).t
+      : 'с '+khParts(Date.parse(x.s)).t).join(', ') : 'вся смена');
+  }).join(' · ');
+}
+function liveCustHtml(l){
+  const ids=l.customer_ids||[], pres=ids.length?'<div class="lpauses" style="text-align:left">'+livePresence(l)+'</div>':'';
+  if(locked) return (ids.length?pres:'<div class="lsum" style="text-align:left">игроки не выбраны</div>');
+  const list=S.customers.filter(c=>c.active||ids.indexOf(c.id)>=0);
+  return '<div class="chips">'+(list.length ? list.map(function(c){
+    const seat=liveSeated(l,c.id), was=!seat&&ids.indexOf(c.id)>=0&&!l.finished_at;
+    return '<button class="chip'+(was?' gone':'')+'" data-lcust="'+l.id+'|'+c.id+'" aria-pressed="'+(seat||(l.finished_at&&ids.indexOf(c.id)>=0))+'">'+
+      esc(c.name)+(was?' · ушёл':'')+'</button>';
+  }).join('') : '<div class="empty">Список кастомеров пуст</div>')+'</div>'+(l.finished_at?'':pres);
+}
+// Операторы живой смены: нажал на работающего — «сменился», на другого — «заступил» (время сервера)
+const wLog=l=>Array.isArray(l.worker_log)?l.worker_log:[];
+const liveWorking=(l,id)=>wLog(l).some(x=>x.id===id&&!x.e) ||
+  (!l.finished_at && (l.worker_ids||[]).indexOf(id)>=0 && !wLog(l).some(x=>x.id===id));
+function liveWorkPresence(l){
+  if(!wLog(l).length) return '';
+  return (l.worker_ids||[]).map(function(id){
+    const mine=wLog(l).filter(x=>x.id===id);
+    return esc(wName(id))+' '+(mine.length ? mine.map(x=>x.e ? khParts(Date.parse(x.s)).t+'–'+khParts(Date.parse(x.e)).t
+      : 'с '+khParts(Date.parse(x.s)).t).join(', ') : 'вся смена');
+  }).join(' · ');
+}
+function liveWorkersHtml(l){
+  const pres=liveWorkPresence(l), line=pres?'<div class="lpauses" style="text-align:left">'+pres+'</div>':'';
+  if(locked) return line;
+  const ids=l.worker_ids||[], list=S.workers.filter(w=>w.active||ids.indexOf(w.id)>=0);
+  return '<span class="cap">Операторы — нажми, когда кто заступил или сменился</span><div class="chips">'+list.map(function(w){
+    const on=liveWorking(l,w.id), was=!on&&ids.indexOf(w.id)>=0;
+    return '<button class="chip'+(was?' gone':'')+'" data-lwk="'+l.id+'|'+w.id+'" aria-pressed="'+on+'">'+esc(w.name)+(was?' · сменился':'')+'</button>';
+  }).join('')+'</div>'+line;
+}
+function liveWorkerRowsHtml(l){
+  return wLog(l).map((x,i)=>'<div class="prow" data-wi="'+i+'"><span class="pn">'+esc(wName(x.id))+'</span>'+
+    '<input type="time" data-wf="s" value="'+khParts(Date.parse(x.s)).t+'"><span>–</span>'+
+    '<input type="time" data-wf="e" value="'+(x.e?khParts(Date.parse(x.e)).t:'')+'"></div>').join('');
+}
+function liveWorkerSplit(l,pool,now){
+  const workers=liveWorkerSpans(l,now);
+  return {w:{s:Date.parse(l.started_at), e:l.finished_at?Date.parse(l.finished_at):now}, workers:workers,
+          res:splitWorkers(pool,workers,livePauseSpans(l,now))};
+}
+// один платит за всех, кто сидел с ним: его можно отметить по ходу или в конце
+function livePayerHtml(l){
+  const ids=l.customer_ids||[];
+  if(locked) return l.payer_id?'<div class="lpauses" style="text-align:left">платит за всех, кто сидел с ним: '+esc(cName(l.payer_id))+'</div>':'';
+  if(ids.length<2) return '';
+  return '<span class="cap">Один платит за всех, кто сидел с ним</span><div class="chips">'+
+    '<button class="chip" data-lpayer="'+l.id+'|" aria-pressed="'+!l.payer_id+'">Никто</button>'+
+    ids.map(id=>'<button class="chip" data-lpayer="'+l.id+'|'+id+'" aria-pressed="'+(l.payer_id===id)+'">'+esc(cName(id))+'</button>').join('')+'</div>';
+}
+// экран итога: во сколько каждый сел и встал — правится
+function livePlayersRowsHtml(l){
+  return liveLog(l).map((x,i)=>'<div class="prow" data-ci="'+i+'"><span class="pn">'+esc(cName(x.id))+'</span>'+
+    '<input type="time" data-cf="s" value="'+khParts(Date.parse(x.s)).t+'"><span>–</span>'+
+    '<input type="time" data-cf="e" value="'+(x.e?khParts(Date.parse(x.e)).t:'')+'"></div>').join('');
+}
+// счет игроков живой смены: по времени за столом и с учетом того, кто платит за всех
+function liveSplit(l,total,now){
+  const players=livePlayerSpans(l,now);
+  return {w:{s:Date.parse(l.started_at), e:l.finished_at?Date.parse(l.finished_at):now}, players:players,
+          res:splitPlayers(total,players,livePauseSpans(l,now),l.payer_id)};
+}
+// паузы на экране итога: время начала и конца каждой можно поправить, лишнюю — убрать, забытую — добавить
+function pauseRowsHtml(l){
+  const now=nowMs();
+  return pauseSpans(l.pause_log).map((p,i)=>'<div class="prow" data-pi="'+i+'">'+
+      '<input type="time" data-pf="s" value="'+khParts(p.s).t+'"><span>–</span>'+
+      '<input type="time" data-pf="e" value="'+(p.e?khParts(p.e).t:'')+'">'+
+      '<span class="pd">'+(pauseText(Math.round(spanSec(p,now)/60))||'<1 мин')+'</span>'+
+      '<button class="del" data-pdel="'+i+'" aria-label="Убрать паузу">×</button></div>').join('')+
+    (pauseSpans(l.pause_log).length ? '' : '<div class="note" style="margin-top:0">Пауз не было.</div>')+
+    '<button class="pill" data-padd="'+l.id+'" style="margin-top:8px">+ Добавить паузу</button>';
+}
+function liveCalcHtml(l){
+  const x=liveSummary(l,nowMs()), c=x.c, nw=(l.worker_ids||[]).length, nc=(l.customer_ids||[]).length;
+  const sp=khParts(x.s), ep=khParts(x.e), row=(k,v,cls)=>'<div'+(cls?' class="'+cls+'"':'')+'><span>'+k+'</span><b>'+v+'</b></div>';
+  return '<div class="kv">'+
+    row('Начало',dayText(sp.d)+' '+sp.t)+row('Конец',dayText(ep.d)+' '+ep.t)+
+    row('Отыграно',clockHM(x.played))+
+    (x.pauseMin?row('Пауза'+(pauseSpans(l.pause_log).length>1?' ('+pauseSpans(l.pause_log).length+')':''),pauseText(x.pauseMin)):'')+
+    (locked && pauseSpans(l.pause_log).length ? '<div class="pspans">'+spansLine(l.pause_log,nowMs())+'</div>' : '')+
+    row('К оплате',x.h+' '+hourWord(x.h))+
+    (c.discount?row('По тарифу',money(c.full))+row('Скидка','−'+money(c.discount)):'')+
+    row('Сумма',money(c.total),'big')+
+    row('В кассу',money(c.kassa))+
+    (nw?liveWorkerSplit(l,c.total/2,nowMs()).res.map(r=>row(esc(wName(r.id)),money(r.amount)+(wLog(l).length&&r.ms?' · '+clockHM(r.ms/1000):''))).join(''):'')+
+    liveSplit(l,c.total,nowMs()).res.map(r=>row(esc(cName(r.id)),esc(playerNote(r,l.payer_id)))).join('')+
+    (x.h<1?'<span class="warn">Меньше 30 минут — записывать нечего. Вернись к смене или отмени её.</span>'
+      : !nc?'<span class="warn">Игроки не выбраны — смена запишется без привязки к игроку.</span>':'')+
+  '</div>';
+}
+function liveCardHtml(l){
+  const ws=liveWorkers(l);
+  if(l.finished_at){
+    const sp=khParts(Date.parse(l.started_at)), ep=khParts(Date.parse(l.finished_at));
+    return '<div class="group lcard fin" data-live="'+l.id+'">'+
+      '<div class="lhead"><b>Смена закончена</b><span class="lmeta">'+ws+' · ждёт сохранения</span></div>'+
+      (locked ? '' :
+        '<div class="lgrid">'+
+          '<label><span class="cap">Начало</span><input type="date" data-lf="sd" value="'+sp.d+'"><input type="time" data-lf="st" value="'+sp.t+'"></label>'+
+          '<label><span class="cap">Конец</span><input type="date" data-lf="ed" value="'+ep.d+'"><input type="time" data-lf="et" value="'+ep.t+'"></label>'+
+        '</div>'+
+        '<span class="cap">Паузы — не оплачиваются</span><div data-plist="'+l.id+'">'+pauseRowsHtml(l)+'</div>'+
+        '<label class="field"><span>Скидка, $</span><input type="text" data-lf="disc" inputmode="decimal" placeholder="0" value="'+
+          (Number(l.discount)?String(Number(l.discount)).replace('.',','):'')+'"></label>')+
+      (locked||!wLog(l).length ? '' : '<span class="cap">Кто во сколько работал</span><div data-wklist="'+l.id+'">'+liveWorkerRowsHtml(l)+'</div>')+
+      '<span class="cap">Игроки — нажми, чтобы добавить или убрать</span>'+liveCustHtml(l)+
+      (locked||!liveLog(l).length ? '' : '<span class="cap">Кто во сколько сидел</span><div data-pllist="'+l.id+'">'+livePlayersRowsHtml(l)+'</div>')+
+      livePayerHtml(l)+
+      (locked ? (l.note?'<div class="lsum" style="text-align:left;margin-top:8px">'+esc(l.note)+'</div>':'')
+        : '<input type="text" class="txt" data-lf="note" placeholder="Комментарий — необязательно" maxlength="200" value="'+
+          esc(l.note||'')+'" style="margin-top:14px">')+
+      '<div data-lcalc="'+l.id+'">'+liveCalcHtml(l)+'</div>'+
+      '<div class="w-only">'+
+        '<button class="btn mt" data-lsave="'+l.id+'">Сохранить в историю</button>'+
+        '<button class="btn sec mt" data-lact="unfinish" data-id="'+l.id+'">Вернуться к смене</button>'+
+        '<button class="rm" data-ldrop="'+l.id+'">Отменить смену без записи</button></div>'+
+    '</div>';
+  }
+  const paused=!!l.paused_at;
+  return '<div class="group lcard'+(paused?' paused':'')+'" data-live="'+l.id+'">'+
+    '<div class="lhead"><span class="live'+(paused?' off':'')+'"></span><b>'+(paused?'Пауза':'Идёт смена')+'</b>'+
+      '<span class="lmeta">с '+khParts(Date.parse(l.started_at)).t+' · '+ws+'</span></div>'+
+    '<div class="ltimer" data-tick="'+l.id+'">'+clock(livePlayed(l,nowMs()))+'</div>'+
+    '<div class="lsum" data-tsum="'+l.id+'"></div>'+
+    '<div class="lpauses" data-tpause="'+l.id+'"></div>'+
+    liveWorkersHtml(l)+
+    '<span class="cap">Игроки'+(locked?'':' — нажми, когда сел и когда встал')+'</span>'+liveCustHtml(l)+livePayerHtml(l)+
+    '<div class="lbtns w-only">'+
+      '<button class="btn sec" data-lact="'+(paused?'resume':'pause')+'" data-id="'+l.id+'">'+(paused?'Продолжить':'Пауза')+'</button>'+
+      '<button class="btn" data-lact="finish" data-id="'+l.id+'">Закончить смену</button></div>'+
+    '<button class="rm w-only" data-ldrop="'+l.id+'">Отменить смену без записи</button>'+
+  '</div>';
+}
+const liveSig=l=>JSON.stringify(l)+'|'+locked+'|'+S.customers.map(c=>c.id+c.name+c.active).join()+'|'+S.workers.map(w=>w.id+w.name).join();
+function renderLive(){
+  if(liveW===null){ const me=S.workers.filter(w=>w.is_me&&w.active)[0]; liveW=me?[me.id]:[]; }
+  liveW=liveW.filter(id=>S.workers.some(w=>w.id===id&&w.active));
+  const aw=S.workers.filter(w=>w.active);
+  document.getElementById('liveWChips').innerHTML = aw.length
+    ? aw.map(w=>'<button class="chip" data-lw="'+w.id+'" aria-pressed="'+(liveW.indexOf(w.id)>=0)+'">'+esc(w.name)+'</button>').join('')
+    : '<div class="empty">Добавь операторов в ⚙</div>';
+  document.getElementById('liveStart').disabled=!liveW.length;
+
+  // карточки обновляем по одной и не трогаем ту, где человек сейчас печатает
+  const host=document.getElementById('liveList'), rows=liveRows();
+  host.querySelectorAll('[data-live]').forEach(el=>{ if(!rows.some(l=>l.id===el.dataset.live)) el.remove(); });
+  rows.forEach(function(l){
+    let el=host.querySelector('[data-live="'+l.id+'"]');
+    const sig=liveSig(l);
+    if(el && el.dataset.sig===sig) return;
+    const a=document.activeElement;
+    if(el && a && el.contains(a) && /INPUT|TEXTAREA/.test(a.tagName)) return;
+    const tmp=document.createElement('div'); tmp.innerHTML=liveCardHtml(l);
+    const fresh=tmp.firstChild; fresh.dataset.sig=sig;
+    if(el) el.replaceWith(fresh); else host.appendChild(fresh);
+  });
+  document.getElementById('liveEmpty').style.display=rows.length?'none':'block';
+  document.getElementById('liveEmptyHint').textContent = locked ? 'Когда начнётся смена, здесь пойдёт таймер.' : 'Отметь операторов и нажми «Начать смену».';
+  tick();
+}
+// раз в секунду: таймеры, текущая сумма и строка на афише — без перерисовки карточек
+function tick(){
+  const now=nowMs(), rows=liveRows();
+  rows.forEach(function(l){
+    const t=document.querySelector('[data-tick="'+l.id+'"]');
+    if(t) t.textContent=clock(livePlayed(l,now));
+    const pl=document.querySelector('[data-tpause="'+l.id+'"]');
+    if(pl){ const line=spansLine(l.pause_log,now); pl.textContent=line?'Паузы: '+line:''; }
+    const sm=document.querySelector('[data-tsum="'+l.id+'"]');
+    if(sm){
+      const x=liveSummary(l,now);
+      sm.innerHTML='к оплате сейчас <b>'+x.h+' '+hourWord(x.h)+' · '+money(x.c.total)+'</b>'+
+        ((l.pause_sec||l.paused_at)?' · пауза '+clockHM((l.pause_sec||0)+(l.paused_at?Math.max(0,now-Date.parse(l.paused_at))/1000:0)):'');
+    }
+  });
+  document.getElementById('liveStrip').innerHTML=rows.map(function(l){
+    const ws=liveWorkers(l);
+    if(l.finished_at) return '<div data-golive="1">Смена закончена · ждёт сохранения · '+ws+'</div>';
+    return '<div data-golive="1"><span class="live'+(l.paused_at?' off':'')+'"></span>'+
+      (l.paused_at?'Пауза с '+khParts(Date.parse(l.paused_at)).t:'Идёт смена')+
+      ' · <b>'+clock(livePlayed(l,now))+'</b> · '+ws+'</div>';
+  }).join('');
+  document.querySelector('.tabs button[data-v="live"]').classList.toggle('hot',rows.some(l=>!l.finished_at));
+}
+setInterval(tick,1000);
+document.getElementById('liveStrip').addEventListener('click',()=>goTab('live'));
+
+function liveReady(){
+  if(guard()) return false;
+  if(!online()){ toast('Нужен интернет'); return false; }
+  return true;
+}
+function putLive(row){
+  if(!row || !row.id) return;
+  row.discount=Number(row.discount)||0;
+  const i=(S.live||[]).findIndex(x=>x.id===row.id);
+  if(i>=0) S.live[i]=row; else (S.live=S.live||[]).push(row);
+}
+document.getElementById('liveWChips').onclick=e=>{
+  const b=e.target.closest('[data-lw]'); if(!b||guard()) return;
+  tap(8); toggle(liveW,b.dataset.lw); renderLive();
+};
+document.getElementById('liveStart').onclick=async function(){
+  if(!liveReady()) return;
+  if(!liveW.length){ toast('Отметь операторов'); return; }
+  this.disabled=true;
+  const {data,error}=await sb.from('live_shifts').insert({worker_ids:liveW.slice()}).select().single();
+  this.disabled=false;
+  if(error) return fail(error,'Смена не началась');
+  putLive(data); tap(18); renderLive();
+  toast('Смена началась · '+khParts(Date.parse(data.started_at)).t);
+};
+document.getElementById('liveList').addEventListener('click',async e=>{
+  const act=e.target.closest('[data-lact]'), cust=e.target.closest('[data-lcust]'),
+        save=e.target.closest('[data-lsave]'), drop=e.target.closest('[data-ldrop]');
+  if(act){
+    if(!liveReady()) return;
+    if(act.dataset.lact==='unfinish'){
+      const l=(S.live||[]).find(x=>x.id===act.dataset.id);
+      if(l && l.finished_at && !await ask('Смена продолжится. Время с '+khParts(Date.parse(l.finished_at)).t+
+          ' до сейчас тоже пойдёт в игру. Вернуться к смене?')) return;
+    }
+    act.disabled=true;
+    const {data,error}=await sb.rpc('live_action',{p_id:act.dataset.id,p_action:act.dataset.lact});
+    act.disabled=false;
+    if(error) return fail(error,'Не получилось');
+    if(data && data.id) putLive(data); else await loadAll();   // кто-то успел раньше с другого телефона
+    tap(act.dataset.lact==='finish'?18:8); renderLive();
+    return;
+  }
+  if(cust){
+    if(!liveReady()) return;
+    const [id,cid]=cust.dataset.lcust.split('|'), l=(S.live||[]).find(x=>x.id===id); if(!l) return;
+    let act;
+    if(l.finished_at) act=(l.customer_ids||[]).indexOf(cid)>=0 ? 'remove' : 'sit';   // на итоге: вся смена или убрать
+    else if(liveSeated(l,cid)){
+      // нажал по ошибке в первую минуту — просто убираем, иначе «встал»
+      const open=liveLog(l).filter(x=>x.id===cid&&!x.e).pop();
+      act=(open && nowMs()-Date.parse(open.s)<60e3 && liveLog(l).filter(x=>x.id===cid).length===1) ? 'remove' : 'leave';
+    } else act='sit';
+    tap(8); cust.disabled=true;
+    const {data,error}=await sb.rpc('live_player',{p_id:id,p_customer:cid,p_action:act});
+    cust.disabled=false;
+    if(error) return fail(error,'Игроки не сохранились');
+    if(data && data.id) putLive(data); else await loadAll();
+    renderLive();
+    toast(act==='sit'?cName(cid)+' сел'+(l.finished_at?'':' · '+khParts(nowMs()).t):act==='leave'?cName(cid)+' встал · '+khParts(nowMs()).t:cName(cid)+' убран');
+    return;
+  }
+  const wk=e.target.closest('[data-lwk]');
+  if(wk){
+    if(!liveReady()) return;
+    const [id,wid]=wk.dataset.lwk.split('|'), l=(S.live||[]).find(x=>x.id===id); if(!l) return;
+    const act=liveWorking(l,wid)?'off':'on';
+    if(act==='off' && (l.worker_ids||[]).filter(x=>liveWorking(l,x)).length<2 &&
+       !await ask(wName(wid)+' — последний оператор на смене. Отметить, что он сменился?')) return;
+    tap(8); wk.disabled=true;
+    const {data,error}=await sb.rpc('live_worker',{p_id:id,p_worker:wid,p_action:act});
+    wk.disabled=false;
+    if(error) return fail(error,'Не сохранилось');
+    if(data && data.id) putLive(data); else await loadAll();
+    renderLive();
+    toast(wName(wid)+(act==='on'?' заступил · ':' сменился · ')+khParts(nowMs()).t);
+    return;
+  }
+  const payerBtn=e.target.closest('[data-lpayer]');
+  if(payerBtn){
+    if(!liveReady()) return;
+    const [id,pid]=payerBtn.dataset.lpayer.split('|');
+    tap(8);
+    const {data,error}=await sb.from('live_shifts').update({payer_id:pid||null}).eq('id',id).select().single();
+    if(error) return fail(error,'Не сохранилось');
+    putLive(data); renderLive();
+    return;
+  }
+  if(save) return liveSave(save.dataset.lsave, save);
+  // забытая пауза — добавляем 15 минут в конце смены, дальше время правится полями
+  const padd=e.target.closest('[data-padd]'), pdel=e.target.closest('[data-pdel]');
+  if(padd || pdel){
+    const card=(padd||pdel).closest('[data-live]'), l=(S.live||[]).find(x=>x.id===card.dataset.live);
+    if(!l || !liveReady()) return;
+    const spans=pauseSpans(l.pause_log), end=Date.parse(l.finished_at)||nowMs();
+    if(padd) spans.push({s:Math.max(Date.parse(l.started_at),end-15*60e3), e:end});
+    else spans.splice(Number(pdel.dataset.pdel),1);
+    tap(8); await savePauses(card,l,spans);
+    card.dataset.sig=''; renderLive();
+    return;
+  }
+  if(drop){
+    if(!liveReady()) return;
+    if(!await ask('Отменить смену без записи? Таймер пропадёт, в историю ничего не попадёт.')) return;
+    const {error}=await sb.from('live_shifts').delete().eq('id',drop.dataset.ldrop);
+    if(error) return fail(error,'Не удалилось');
+    S.live=(S.live||[]).filter(x=>x.id!==drop.dataset.ldrop); renderLive(); toast('Смена отменена');
+  }
+});
+// журнал пауз → в базу; общая пауза — сумма всех отрезков
+async function savePauses(card,l,spans){
+  if(spans.some(p=>!(p.s>0) || (p.e!==null && !(p.e>p.s)))){
+    toast('Конец паузы должен быть позже начала'); card.dataset.sig=''; renderLive(); return;
+  }
+  const log=spans.map(p=>({s:new Date(p.s).toISOString(), e:p.e?new Date(p.e).toISOString():null}));
+  const sec=Math.round(spans.reduce((a,p)=>a+spanSec(p,Date.parse(l.finished_at)||nowMs()),0));
+  const {data,error}=await sb.from('live_shifts').update({pause_log:log,pause_sec:sec}).eq('id',l.id).select().single();
+  if(error) return fail(error,'Паузы не сохранились');
+  putLive(data);
+  card.querySelector('[data-lcalc]').innerHTML=liveCalcHtml(data);
+  card.querySelectorAll('.prow[data-pi]').forEach(function(r,i){
+    const p=pauseSpans(data.pause_log)[i];
+    if(p) r.querySelector('.pd').textContent=pauseText(Math.round(spanSec(p,nowMs())/60))||'<1 мин';
+  });
+  card.dataset.sig=liveSig(data);
+}
+// правка итога: время, паузы, скидка, комментарий — пишем в базу и пересчитываем
+// правка на карточке пишется в базу, а «Сохранить» ждет ее — иначе запишется прежняя скидка или время
+let livePending=Promise.resolve();
+document.getElementById('liveList').addEventListener('change',e=>{ livePending=liveEdit(e).catch(function(){}); });
+async function liveEdit(e){
+  const wf=e.target.closest('[data-wf]');
+  if(wf){
+    const card=wf.closest('[data-live]'), l=(S.live||[]).find(x=>x.id===card.dataset.live);
+    if(!l || !liveReady()) return;
+    const old=wLog(l);
+    const log=[...card.querySelectorAll('[data-wi]')].map(function(r){
+      const o=old[Number(r.dataset.wi)], sv=r.querySelector('[data-wf="s"]').value, ev=r.querySelector('[data-wf="e"]').value;
+      const s=sv?khNear(sv,Date.parse(o.s)):Date.parse(o.s);
+      return {id:o.id, s:s, e:ev?khNear(ev,o.e?Date.parse(o.e):s):null};
+    });
+    if(log.some(x=>x.e!==null && !(x.e>x.s))){ toast('Конец работы должен быть позже начала'); card.dataset.sig=''; renderLive(); return; }
+    const out=log.map(x=>({id:x.id, s:new Date(x.s).toISOString(), e:x.e?new Date(x.e).toISOString():null}));
+    const {data,error}=await sb.from('live_shifts').update({worker_log:out}).eq('id',l.id).select().single();
+    if(error) return fail(error,'Время операторов не сохранилось');
+    putLive(data);
+    card.querySelector('[data-lcalc]').innerHTML=liveCalcHtml(data);
+    card.dataset.sig=liveSig(data);
+    return;
+  }
+  const cf=e.target.closest('[data-cf]');
+  if(cf){
+    const card=cf.closest('[data-live]'), l=(S.live||[]).find(x=>x.id===card.dataset.live);
+    if(!l || !liveReady()) return;
+    const old=liveLog(l);
+    const log=[...card.querySelectorAll('[data-ci]')].map(function(r){
+      const o=old[Number(r.dataset.ci)], sv=r.querySelector('[data-cf="s"]').value, ev=r.querySelector('[data-cf="e"]').value;
+      const s=sv?khNear(sv,Date.parse(o.s)):Date.parse(o.s);
+      return {id:o.id, s:s, e:ev?khNear(ev,o.e?Date.parse(o.e):s):null};
+    });
+    if(log.some(x=>x.e!==null && !(x.e>x.s))){ toast('«Встал» должно быть позже, чем «сел»'); card.dataset.sig=''; renderLive(); return; }
+    const out=log.map(x=>({id:x.id, s:new Date(x.s).toISOString(), e:x.e?new Date(x.e).toISOString():null}));
+    const {data,error}=await sb.from('live_shifts').update({customer_log:out}).eq('id',l.id).select().single();
+    if(error) return fail(error,'Время игроков не сохранилось');
+    putLive(data);
+    card.querySelector('[data-lcalc]').innerHTML=liveCalcHtml(data);
+    card.dataset.sig=liveSig(data);
+    return;
+  }
+  const pf=e.target.closest('[data-pf]');
+  if(pf){
+    const card=pf.closest('[data-live]'), l=(S.live||[]).find(x=>x.id===card.dataset.live);
+    if(!l || !liveReady()) return;
+    const vals=[...card.querySelectorAll('.prow[data-pi]')].map(r=>({s:r.querySelector('[data-pf="s"]').value, e:r.querySelector('[data-pf="e"]').value}));
+    return savePauses(card,l,pausesFromInputs(vals,l.pause_log,Date.parse(l.started_at)));
+  }
+  const f=e.target.closest('[data-lf]'); if(!f) return;
+  const card=f.closest('[data-live]'), id=card.dataset.live, l=(S.live||[]).find(x=>x.id===id);
+  if(!l || !liveReady()) return;
+  const v=k=>card.querySelector('[data-lf="'+k+'"]').value;
+  const sp=khParts(Date.parse(l.started_at)), ep=khParts(Date.parse(l.finished_at));
+  // время трогаем, только если его поменяли: иначе сохраняем секунды как были
+  const s=(v('sd')===sp.d&&v('st')===sp.t) ? Date.parse(l.started_at) : khToMs(v('sd'),v('st'));
+  const en=(v('ed')===ep.d&&v('et')===ep.t) ? Date.parse(l.finished_at) : khToMs(v('ed'),v('et'));
+  if(!(en>s)){ toast('Конец должен быть позже начала'); card.dataset.sig=''; renderLive(); return; }
+  // время пишем, только если его поменяли: иначе «Вернуться к смене» не узнает, кто ушел в момент «Закончить»
+  const patch={ discount:Math.max(0,parseAmt(v('disc'))), note:v('note').trim()||null };
+  if(s!==Date.parse(l.started_at)) patch.started_at=new Date(s).toISOString();
+  if(en!==Date.parse(l.finished_at)) patch.finished_at=new Date(en).toISOString();
+  const {data,error}=await sb.from('live_shifts').update(patch).eq('id',id).select().single();
+  if(error) return fail(error,'Не сохранилось');
+  putLive(data);
+  card.querySelector('[data-lcalc]').innerHTML=liveCalcHtml(data);
+  card.dataset.sig=liveSig(data);
+}
+async function liveSave(id,btn){
+  if(btn.disabled) return;
+  btn.disabled=true; await livePending; btn.disabled=false;
+  const l=(S.live||[]).find(x=>x.id===id);
+  if(!l || !liveReady()) return;
+  const now=nowMs(), x=liveSummary(l,now);
+  const ws=workerRows(liveWorkerSplit(l,x.c.total/2,now)).map(w=>({id:w.worker_id, share:w.share, spans:w.spans}));
+  const cs=playerLinks(liveSplit(l,x.c.total,now),l.payer_id)
+    .map(p=>({id:p.customer_id, amount:p.amount, share:p.share, spans:p.spans, paid_by:p.paid_by}));
+  if(!ws.length){ toast('В смене нет операторов'); return; }
+  if(x.h<1){ toast('Меньше 30 минут — записывать нечего'); return; }
+  const sp=khParts(x.s);
+  const shift={ work_date:sp.d, start_time:sp.t, hours:x.h, total:x.c.total, kassa:x.c.kassa,
+    per_worker:x.c.perWorker, per_customer:x.c.perCustomer, pause_min:x.pauseMin, discount:x.c.discount, note:l.note||'' };
+  btn.disabled=true;
+  const {data:sid,error}=await sb.rpc('save_live_shift',{p_live:id,p_shift:shift,p_workers:ws,p_customers:cs});
+  btn.disabled=false;
+  if(error) return fail(error,'Не записалось');
+  // уведомление в Telegram — только сейчас, при записи в историю
+  sb.functions.invoke('notify-shift',{body:{shift_id:sid,mode:'new'}}).catch(function(){});
+  S.live=(S.live||[]).filter(r=>r.id!==id);
+  tap(18); await loadAll(); renderAll();
+  toast('Смена на '+money(x.c.total)+' записана в историю');
+}
+
+/* ======================= ОБНОВЛЕНИЕ ======================= */
+// GitHub Pages разрешает телефону держать страницу в кэше до 10 минут, а Telegram на iPhone
+// сервис-воркер не запускает. Поэтому сами спрашиваем, не вышла ли версия новее, и перезагружаемся.
+// При каждой выкладке APP_VERSION меняется.
+const APP_VERSION='2026-11-11.1';
+async function checkUpdate(){
+  try{
+    const r=await fetch('index.html?nc='+Date.now(),{cache:'no-store'});
+    const m=(await r.text()).match(/APP_VERSION='([0-9.-]+)'/);
+    if(!m || m[1]===APP_VERSION) return;
+    const key='uchet-upd-'+m[1];
+    if(sessionStorage.getItem(key)) return;   // уже пробовали — не зацикливаемся
+    sessionStorage.setItem(key,'1');
+    // новый адрес — мимо кэша; хвост с данными Telegram сохраняем
+    location.replace(location.pathname+'?v='+encodeURIComponent(m[1])+location.hash);
+  }catch(e){}
+}
+
+/* ======================= СТАРТ ======================= */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.getRegistration('../').catch(function(){});
+  });
+}
+
+// форма — на сейчас по Камбодже, а не по часам телефона
+function resetWhen(){
+  const n=khParts(nowMs()), hm=n.t.split(':');
+  document.getElementById('date').value=n.d;
+  document.getElementById('time').value=hm[0]+':'+z2(Math.floor(Number(hm[1])/5)*5);
+}
+(function init(){
+  document.getElementById('bootWord').innerHTML='УЧЕТ'.split('').map((ch,i)=>
+    '<span style="animation-delay:'+(i*70)+'ms">'+ch+'</span>').join('');
+  resetWhen();
+  applyLock(); renderStrip(); renderPreview();
+  boot();
+  checkUpdate();
+})();
+</script>
+</body>
+</html>
