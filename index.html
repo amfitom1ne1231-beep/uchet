@@ -133,24 +133,23 @@ body.ro #plus{opacity:.25;pointer-events:none}
 .dots{display:flex;justify-content:center;gap:6px;margin:10px 0 0}
 .dots i{width:6px;height:6px;border-radius:50%;background:var(--t3);transition:background .2s,width .25s var(--spring)}
 .dots i.on{background:var(--t1);width:16px;border-radius:3px}
-.lstat{display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;color:var(--t2);margin:6px 0 4px}
-.ringbox{position:relative;width:260px;height:260px;margin:6px auto 0;transition:filter .4s,opacity .4s}
-.ringbox svg{position:absolute;inset:0;transform:rotate(-90deg)}
-.ringbox .tr{stroke:rgba(255,255,255,.07)} .ringbox .pg{stroke:#fff;transition:stroke-dashoffset 1s linear}
-.ringbox .notch{stroke:rgba(255,255,255,.5)}
-.ringin{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
-.clock{font-size:54px;font-weight:200;letter-spacing:-.02em}
+.ringbox{position:relative;width:min(100%,244px);aspect-ratio:1;margin:8px auto 0;container-type:inline-size}
+.ringbox svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.ringbox .tr{stroke:rgba(255,255,255,.12)}
+.ringbox .pg{stroke:#fff;transition:stroke .2s,stroke-dashoffset 1s linear}
+.ringbox .pg.zero{visibility:hidden}
+.ringbox .notch{stroke:var(--t3)}
+.ringin{position:absolute;inset:0 12%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.clock{font-size:min(54px,21cqi);font-weight:300;letter-spacing:-.02em;white-space:nowrap}
 .ringin .k{font-size:14px;color:var(--t2);margin-top:4px}
 .ringin .k b{color:var(--t1);font-weight:500}
-.ringin .pz{font-size:15px;color:var(--debt);margin-top:6px;height:18px}
-.lcard.paused .ringbox{filter:brightness(.7)}
-.lcard.paused .clock{color:var(--t2)}
-.lcard.paused .pg{animation:breathe 3s ease-in-out infinite}
-@keyframes breathe{0%,100%{opacity:.4}50%{opacity:.85}}
-.pausebtn{width:72px;height:72px;border-radius:50%;background:var(--card2);display:grid;place-items:center;margin:16px auto 6px;
-  transition:transform .25s var(--spring),background .3s,width .35s var(--spring)}
-.pausebtn:active{transform:scale(.9)}
-.lcard.paused .pausebtn{width:200px;border-radius:36px;background:#fff;color:#000;font-weight:600;gap:8px;display:flex;align-items:center;justify-content:center}
+.ringin .pz{font-size:14px;color:var(--debt);margin-top:6px;min-height:1.25em;line-height:1.25}
+.lcard.paused .pg{stroke:var(--debt);transition:stroke .2s}
+.pausebtn{width:min(100%,200px);min-height:48px;border-radius:24px;background:var(--card2);margin:14px auto 6px;
+  display:flex;align-items:center;justify-content:center;gap:8px;font-weight:600;transition:transform .25s var(--spring),background .2s,color .2s}
+.pausebtn:active{transform:scale(.97)}
+.lcard.paused .pausebtn{background:#fff;color:#000}
+@media(prefers-reduced-motion:reduce){.ringbox .pg{transition:none!important}}
 /* строка людей прокручивается вбок, а значит обрезает всё, что выходит за её края; запас по краям — чтобы свечение выбранного кружка не резалось рамкой */
 .people{display:flex;gap:14px;overflow-x:auto;padding:26px 24px 6px;margin:-22px -18px -4px;scroll-padding:0 24px}
 .people::-webkit-scrollbar{display:none}
@@ -164,7 +163,6 @@ body.ro #plus{opacity:.25;pointer-events:none}
 .pp.add .av{background:none;box-shadow:inset 0 0 0 1.5px var(--line2);color:var(--t2);font-size:24px;font-weight:300}
 .pp .arr{position:absolute;right:-12px;top:50%;margin-top:-8px;color:var(--t3);font-size:12px}
 .moneyline{display:flex;align-items:center;justify-content:space-between;padding:14px 4px;margin-top:10px;border-top:.5px solid var(--line);color:var(--t2)}
-.moneyline b{color:var(--t1);font-weight:500}
 .moneyline .chev{transition:transform .35s var(--spring)}
 .moneyline.open .chev{transform:rotate(180deg)}
 .mdet{display:grid;grid-template-rows:0fr;transition:grid-template-rows .4s var(--spring)}
@@ -179,6 +177,7 @@ body.ro #plus{opacity:.25;pointer-events:none}
 .slider .lbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:500;color:var(--t2);padding-left:40px;
   background:linear-gradient(90deg,var(--t3) 0%,#fff 40%,var(--t3) 60%) 0 0/250% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
   animation:shine 2.6s linear infinite}
+.lcard .slider .lbl{animation:none;background:none;-webkit-text-fill-color:currentColor}
 @keyframes shine{from{background-position:120% 0}to{background-position:-120% 0}}
 .slider.busy .knob{animation:pulse 1s infinite}
 .slider .knob{position:absolute;left:4px;top:4px;width:52px;height:52px;border-radius:50%;background:#fff;color:#000;display:grid;place-items:center;
@@ -465,10 +464,6 @@ body.sheeted #scrim{opacity:1;pointer-events:auto;transition-duration:var(--open
 .mrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);border-radius:18px;padding:12px 14px;margin-top:8px}
 .mrow .mid{flex:1;min-width:0}.mrow .nm{font-size:15.5px}.mrow .sm{font-size:12.5px;color:var(--t2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mrow b{font-weight:500;font-variant-numeric:tabular-nums}.mrow b.plus{color:var(--ok)}
-/* живое кольцо таймера */
-.ringbox .pg{filter:drop-shadow(0 0 6px rgba(255,255,255,.55))}
-.lcard:not(.paused) .ringbox:after{content:'';position:absolute;inset:18px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.07),transparent 70%);animation:breathe 4s ease-in-out infinite}
-
 /* подсказки под суммой */
 .ticker{position:relative;height:22px;margin:10px 4px 0;overflow:hidden;font-size:14px;color:var(--t2)}
 .ticker span{position:absolute;left:0;right:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:tin .5s var(--spring) both}
@@ -780,9 +775,9 @@ html,body{background:#000}
 <div id="done"><div class="glass"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>
 <div id="gate"></div>
 
-<script>const APP_VERSION='2026-11-15.4';</script>
+<script>const APP_VERSION='2026-11-15.5';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-<script src="core.js?v=2026-11-15.4"></script>
-<script src="app.js?v=2026-11-15.4"></script>
+<script src="core.js?v=2026-11-15.5"></script>
+<script src="app.js?v=2026-11-15.5"></script>
 </body>
 </html>

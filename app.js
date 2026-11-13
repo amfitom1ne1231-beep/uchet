@@ -596,13 +596,14 @@ function pTime(l,id,kind){
   const x=liveSummary(l,now), r=(kind==='c'?liveSplit(l,x.c.total,now):liveWorkerSplit(l,x.c.total/2,now)).res.find(z=>z.id===id);
   return dur(ms)+(r&&r.amount>0.004?'<em>'+m$(r.amount)+'</em>':'');
 }
-const pauseBtnHTML=paused=>paused?'<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>Продолжить':
-  '<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
-// пауза меняет карточку на месте, без перерисовки: кнопка плавно вытягивается в «Продолжить», часы не моргают
+const pauseBtnHTML=paused=>'<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'+
+  (paused?'<path d="M7 4.5v15l13-7.5z"/>':'<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>')+
+  '</svg>'+(paused?'Продолжить':'Пауза');
+// Обновляем карточку на месте, чтобы часы и фокус кнопки не сбрасывались.
 function paintPause(card,l){
   const p=!!l.paused_at;
-  card.classList.toggle('paused',p); card.classList.toggle('tone-debt',p); card.classList.toggle('tone-live',!p);
-  const pb=card.querySelector('[data-pause]'); if(pb){ pb.innerHTML=pauseBtnHTML(p); pb.setAttribute('aria-label',p?'Продолжить':'Пауза'); }
+  card.classList.toggle('paused',p);
+  const pb=card.querySelector('[data-pause]'); if(pb) pb.innerHTML=pauseBtnHTML(p);
   tickLive(); paintHead(); syncDock(); tellNative(true);
 }
 const pauseQ={};   // ответы сервера по паузе: по одной очереди на смену
@@ -614,31 +615,33 @@ function liveCardHTML(l){
       '<div class="s">'+x.h+' '+hourWord(x.h)+' · '+tHM(x.s)+'–'+tHM(x.e)+' · '+esc((l.worker_ids||[]).map(wName).join(', '))+'</div></div>'+
       (locked?'':'<button class="btn" data-open-fin style="margin-top:12px">Открыть итог</button>')+'</div>';
   }
-  const ring='<svg width="260" height="260" viewBox="0 0 260 260"><circle class="tr" cx="130" cy="130" r="120" fill="none" stroke-width="5"/>'+
-    '<circle class="pg" data-ring cx="130" cy="130" r="120" fill="none" stroke-width="5" stroke-linecap="round" stroke-dasharray="'+RC.toFixed(2)+'" stroke-dashoffset="'+RC.toFixed(2)+'"/>'+
-    '<line class="notch" x1="250" y1="130" x2="258" y2="130" stroke-width="2" transform="rotate(180 130 130)"/></svg>';
+  const ring='<svg viewBox="0 0 260 260" aria-hidden="true"><circle class="tr" cx="130" cy="130" r="120" fill="none" stroke-width="5"/>'+
+    '<circle class="pg zero" data-ring cx="130" cy="130" r="120" fill="none" stroke-width="5" stroke-linecap="round" stroke-dasharray="'+RC.toFixed(2)+'" stroke-dashoffset="'+RC.toFixed(2)+'"/>'+
+    '<line stroke-linecap="round" class="notch" x1="244" y1="130" x2="247" y2="130" stroke-width="2" transform="rotate(180 130 130)"/></svg>';
   const ws=l.worker_ids||[], cs=l.customer_ids||[];
-  return '<div class="card lcard sheen '+(paused?'paused tone-debt':'tone-live')+'" data-live="'+l.id+'" style="'+sheenDelay()+'">'+
+  return '<div class="card lcard '+(paused?'paused':'')+'" data-live="'+l.id+'">'+
     '<div class="ringbox">'+ring+'<div class="ringin"><div class="clock num" data-clock>0:00:00</div>'+
       '<div class="k">к оплате <b data-due></b></div><div class="pz num" data-pz></div></div></div>'+
-    (locked?'':'<button class="pausebtn" data-pause aria-label="'+(paused?'Продолжить':'Пауза')+'">'+pauseBtnHTML(paused)+'</button>')+
+    (locked?'':'<button class="pausebtn" data-pause>'+pauseBtnHTML(paused)+'</button>')+
     '<span class="cap">Кастомеры</span><div class="people">'+cs.map(id=>personHTML(l,id,'c')).join('')+
       (locked?'':'<button class="pp add" data-add="c"><div class="av">+</div><div class="tm"></div></button>')+'</div>'+
     '<span class="cap">Операторы</span><div class="people">'+ws.map(id=>{ const lg=wLogOf(l), me=lg.filter(x=>x.id===id&&x.e).pop();
       const by=me&&lg.find(x=>x.id!==id&&Math.abs(Date.parse(x.s)-Date.parse(me.e))<5*60e3);
       return personHTML(l,id,'w')+(by&&!working(l,id)?'<span class="swap" title="сменил">→</span>':''); }).join('')+
       (locked?'':'<button class="pp add" data-add="w"><div class="av">+</div><div class="tm"></div></button>')+'</div>'+
-    '<button class="moneyline" data-money style="width:100%"><span>к оплате <b data-due2></b></span><span class="chev">˄</span></button>'+
+    '<button class="moneyline" data-money aria-expanded="false" style="width:100%"><span>Разбивка оплаты</span><span class="chev" aria-hidden="true">⌄</span></button>'+
     '<div class="mdet"><div data-mdet></div></div>'+
     (locked?'':sliderHTML('закончить смену','data-finish'))+
   '</div>';
 }
 function liveMoneyHTML(l){
   const now=nowMs(), x=liveSummary(l,now), sp=liveSplit(l,x.c.total,now), ws=liveWorkerSplit(l,x.c.total/2,now);
+  const pauseSec=(Number(l.pause_sec)||0)+(l.paused_at?Math.max(0,now-Date.parse(l.paused_at))/1000:0);
   return '<div style="padding:4px 0 6px">'+sp.res.map(r=>'<div class="kv"><span>'+esc(cName(r.id))+(l.payer_id===r.id?' · платит за всех':'')+'</span><b>'+m$(r.amount)+'</b></div>').join('')+
     '<div class="kv"><span>Касса</span><b>'+m$(x.c.kassa)+'</b></div>'+
     ws.res.map(r=>'<div class="kv"><span>'+esc(wName(r.id))+'</span><b>'+m$(r.amount)+'</b></div>').join('')+
-    (x.c.discount?'<div class="kv"><span>Скидка</span><b>−'+m$(x.c.discount)+'</b></div>':'')+'</div>';
+    (x.c.discount?'<div class="kv"><span>Скидка</span><b>−'+m$(x.c.discount)+'</b></div>':'')+
+    (pauseSec>=60?'<div class="kv"><span>Всего пауз</span><b>'+clockHM(pauseSec)+'</b></div>':'')+'</div>';
 }
 // раз в секунду: часы, кольцо, сумма. Кольцо — час; на 30-й минуте час уже в оплате (засечка).
 const lastHalf={};
@@ -647,13 +650,14 @@ function tickLive(){
     const l=(S.live||[]).find(x=>x.id===card.dataset.live); if(!l||l.finished_at) return;
     const now=nowMs(), played=livePlayed(l,now), x=liveSummary(l,now);
     odo(card.querySelector('[data-clock]'),clock(played));
-    const ring=card.querySelector('[data-ring]'); if(ring) ring.style.strokeDashoffset=String(RC*(1-(played%3600)/3600));
+    const ring=card.querySelector('[data-ring]'), progress=(played%3600)/3600;
+    if(ring){ ring.classList.toggle('zero',progress===0); ring.style.strokeDashoffset=String(RC*(1-progress)); }
     const dueT=x.h+' ч · '+m$(x.c.total);
     const d1=card.querySelector('[data-due]'); if(d1 && d1.textContent!==dueT) d1.textContent=dueT;
-    const d2=card.querySelector('[data-due2]'); if(d2) d2.textContent=m$(x.c.total);
     const md=card.querySelector('.mdet.open [data-mdet]'); if(md && now%5000<1000) md.innerHTML=liveMoneyHTML(l);
     const pz=card.querySelector('[data-pz]');
-    if(pz) pz.textContent=l.paused_at?'пауза '+clockHM(Math.max(0,now-Date.parse(l.paused_at))/1000+59)+'':((l.pause_sec||0)>59?'паузы '+clockHM(l.pause_sec):'');
+    const pauseText=l.paused_at?'Перерыв · '+clock(Math.max(0,now-Date.parse(l.paused_at))/1000):'';
+    if(pz && pz.textContent!==pauseText) pz.textContent=pauseText;
     const half=Math.floor((played+1800)/3600);
     const vis=liveRows()[liveIdx]&&liveRows()[liveIdx].id===l.id;
     if(lastHalf[l.id]!=null && half>lastHalf[l.id] && !document.hidden && vis && tab==='now'){ haptic('soft'); if(d1){ d1.animate&&d1.animate([{opacity:.2},{opacity:1}],{duration:500}); } }
@@ -696,7 +700,7 @@ function bindLiveCard(card){
   const ml=card.querySelector('[data-money]');
   if(ml) ml.onclick=()=>{ haptic('tap'); const det=ml.nextElementSibling, open=!det.classList.contains('open');
     if(open) det.querySelector('[data-mdet]').innerHTML=liveMoneyHTML(L());
-    det.classList.toggle('open',open); ml.classList.toggle('open',open); };
+    det.classList.toggle('open',open); ml.classList.toggle('open',open); ml.setAttribute('aria-expanded',String(open)); };
   const sl=card.querySelector('[data-finish]');
   if(sl) bindSlider(sl,async()=>{
     if(!liveReady()) return;
