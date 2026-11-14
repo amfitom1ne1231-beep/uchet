@@ -641,3 +641,23 @@ function attendanceHTML(data){
         r.intervals.map(p=>'<div class="kv attendance-interval"><span>'+esc(p.time)+'</span><b>'+esc(p.duration)+'</b></div>').join('')+
       '</div>').join('')+'</div>').join('');
 }
+
+function initials(name){
+  const w=String(name||'?').trim().split(/\s+/).filter(Boolean);
+  // как в «Контактах»: два слова — две буквы, одно — первая заглавная и вторая строчная (Sa, Ор, 00)
+  if(w.length>1) return (w[0][0]+w[1][0]).toUpperCase();
+  const x=w[0]||'?'; return x[0].toUpperCase()+(x[1]||'').toLowerCase();
+}
+const PALETTE=['#8fb3ff','#a7d88b','#e8c07d','#f29bab','#c4a6f5','#8fd6f0','#86d8c4','#f5a97f','#b9c3ef','#9ee6df','#e6cf9a','#d2a8e8'];
+function personColor(name){ let h=0; const s=String(name||''); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return PALETTE[h%PALETTE.length]; }
+const avHTML=(name,cls)=>{ const c=personColor(name); return '<div class="av '+(cls||'')+'" style="--pc:'+c+'">'+esc(initials(name))+'</div>'; };
+
+function timelineHTML(o){
+  const W=Math.max(1,o.end-o.start), pc=v=>Math.max(0,Math.min(100,(v-o.start)/W*100)).toFixed(2);
+  const bars=(spans,cls)=>(spans||[]).map(z=>'<i class="'+(cls||'')+'" style="left:'+pc(z.s)+'%;width:'+Math.max(.8,pc(z.e)-pc(z.s)).toFixed(2)+'%"></i>').join('');
+  const holes=(o.pauses||[]).map(p=>'<i class="p" style="left:'+pc(p.s)+'%;width:'+Math.max(.6,pc(p.e)-pc(p.s)).toFixed(2)+'%"></i>').join('');
+  const ticks=[0,.25,.5,.75,1].map(k=>khParts(o.start+W*k).t);
+  return '<div class="ax">'+ticks.map(t=>'<span class="num">'+t+'</span>').join('')+'</div>'+
+    '<div class="ln main"><span>смена</span><div class="tr">'+bars([{s:o.start,e:o.end}])+holes+'</div></div>'+
+    (o.rows||[]).map(r=>'<div class="ln" style="--pc:'+personColor(r.name)+'"><span>'+esc(r.name)+'</span><div class="tr">'+bars(r.spans,r.w?'w':'')+holes+'</div></div>').join('');
+}

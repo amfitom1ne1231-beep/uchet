@@ -11,12 +11,6 @@ function moneyHTML(v){
     (c?'<span class="cents">,'+z2(c)+'</span>':'')+'<span class="cur">$</span></span>';
 }
 const m$=v=>money(r2(Number(v)||0)).replace(',00 $',' $');   // мелкие суммы текстом
-function initials(name){
-  const w=String(name||'?').trim().split(/\s+/).filter(Boolean);
-  // как в «Контактах»: два слова — две буквы, одно — первая заглавная и вторая строчная (Sa, Ор, 00)
-  if(w.length>1) return (w[0][0]+w[1][0]).toUpperCase();
-  const x=w[0]||'?'; return x[0].toUpperCase()+(x[1]||'').toLowerCase();
-}
 const WD=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
 const MONFULL=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const MONGEN=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
@@ -90,10 +84,6 @@ document.addEventListener('visibilitychange',()=>{ const bg=$('#bg'); if(bg) bg.
 
 /* ======================= ЦВЕТ ЧЕЛОВЕКА ======================= */
 // у каждого свой постоянный приглушённый оттенок — из имени
-const PALETTE=['#8fb3ff','#a7d88b','#e8c07d','#f29bab','#c4a6f5','#8fd6f0','#86d8c4','#f5a97f','#b9c3ef','#9ee6df','#e6cf9a','#d2a8e8'];
-function personColor(name){ let h=0; const s=String(name||''); for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))>>>0; return PALETTE[h%PALETTE.length]; }
-const avHTML=(name,cls)=>{ const c=personColor(name); return '<div class="av '+(cls||'')+'" style="--pc:'+c+'">'+esc(initials(name))+'</div>'; };
-
 /* ======================= СТЕКЛО ПЛИТОК: БЛИК И СВЕТ ПОД ПАЛЬЦЕМ ======================= */
 // раз в несколько секунд по стеклу пробегает блик — у каждой плитки в своё время
 function sheenDelay(){ return '--d:'+(-Math.random()*9).toFixed(1)+'s'; }
@@ -1728,16 +1718,6 @@ function askExcess(sh,ex){
   });
 }
 // лента времени: шкала часов, паузы, полоски людей
-function timelineHTML(o){
-  const W=Math.max(1,o.end-o.start), pc=v=>Math.max(0,Math.min(100,(v-o.start)/W*100)).toFixed(2);
-  const bars=(spans,cls)=>(spans||[]).map(z=>'<i class="'+(cls||'')+'" style="left:'+pc(z.s)+'%;width:'+Math.max(.8,pc(z.e)-pc(z.s)).toFixed(2)+'%"></i>').join('');
-  const holes=(o.pauses||[]).map(p=>'<i class="p" style="left:'+pc(p.s)+'%;width:'+Math.max(.6,pc(p.e)-pc(p.s)).toFixed(2)+'%"></i>').join('');
-  const ticks=[0,.25,.5,.75,1].map(k=>tHM(o.start+W*k));
-  return '<div class="ax">'+ticks.map(t=>'<span class="num">'+t+'</span>').join('')+'</div>'+
-    '<div class="ln main"><span>смена</span><div class="tr">'+bars([{s:o.start,e:o.end}])+holes+'</div></div>'+
-    (o.rows||[]).map(r=>'<div class="ln" style="--pc:'+personColor(r.name)+'"><span>'+esc(r.name)+'</span><div class="tr">'+bars(r.spans,r.w?'w':'')+holes+'</div></div>').join('');
-}
-
 /* ======================= РАСЧЁТ ======================= */
 // Кастомер платит: по умолчанию весь долг; можно вписать свою сумму. Видно, что закроется и кому сколько.
 function settleSheet(cid){
@@ -1985,14 +1965,46 @@ function settingsSheet(){
     const row=(k,t,v)=>'<button class="row" data-lv="'+k+'" style="width:100%;text-align:left"><div class="mid"><div class="nm">'+t+'</div></div><span class="t2">'+(v==null?'':v)+'</span><span class="chev">›</span></button>';
     b.innerHTML=
       '<div class="list plain">'+row('w','Операторы',S.workers.filter(w=>w.active!==false).length)+row('c','Кастомеры',S.customers.filter(c=>c.active!==false).length)+'</div>'+
-      (isOwner?'<div class="list plain" style="margin-top:14px">'+row('acc','Доступ',pend?'<span class="dot live"></span> '+pend+' '+plural(pend,'запрос','запроса','запросов'):'')+row('chats','Чаты бота','')+'</div>':'')+
+      (isOwner?'<div class="list plain" style="margin-top:14px">'+row('acc','Доступ',pend?'<span class="dot live"></span> '+pend+' '+plural(pend,'запрос','запроса','запросов'):'')+row('chats','Чаты бота','')+row('hours','Доступ к журналу часов','')+'</div>':'')+
       '<div class="list plain" style="margin-top:14px">'+row('tariff','Тариф','100 × 3, дальше 50')+(locked?'':row('hand','Не роздано и ручная выдача',(()=>{ const hd=handDue(), t=hd.kassa+Object.values(hd.w).reduce((q,v)=>q+v,0); return hd.any?m$(t):'0 $'; })()))+row('exp','Выгрузка','')+'</div>'+
       (TG&&canWrite?'<div class="list plain" style="margin-top:14px">'+row('iph','Подключить iPhone','')+'</div>':'')+
       '<div class="list plain" style="margin-top:14px">'+row('me',user?(isOwner?'Владелец':'Можно править'):'Вход владельца',user&&!tgAccount(user)?esc(user.email||''):'')+row('about','О версии',APP_VERSION)+'</div>';
-    b.querySelectorAll('[data-lv]').forEach(r=>r.onclick=()=>{ haptic('tap'); ({w:()=>peopleLevel(sh,'w'),c:()=>peopleLevel(sh,'c'),acc:()=>accessLevel(sh),chats:()=>chatsLevel(sh),
+    b.querySelectorAll('[data-lv]').forEach(r=>r.onclick=()=>{ haptic('tap'); ({w:()=>peopleLevel(sh,'w'),c:()=>peopleLevel(sh,'c'),acc:()=>accessLevel(sh),chats:()=>chatsLevel(sh),hours:()=>hoursAccessLevel(sh),
       tariff:()=>tariffLevel(sh),hand:()=>manualIssueLevel(sh),iph:()=>iphoneLevel(sh),exp:()=>exportLevel(sh),me:()=>meLevel(sh),about:()=>aboutLevel(sh)})[r.dataset.lv](); });
   }});
   return sh;
+}
+function hoursAccessLevel(sh){
+  let code='';
+  sh.push({title:'Доступ к журналу часов',render(b){
+    b.innerHTML='<p class="lead">Приглашение действует сутки и подключает один браузер или приложение с экрана «Домой».</p>'+
+      '<button class="btn" data-invite>Создать приглашение</button>'+
+      (code?'<div class="card" style="margin-top:12px"><label for="hours-invite">Приглашение</label><input id="hours-invite" readonly><button class="btn sec" data-copy>Скопировать ссылку</button><p class="lead">Для приложения с экрана «Домой» используйте этот код.</p><input aria-label="Код подключения" readonly value="'+esc(code)+'"></div>':'')+
+      '<button class="btn ghost" data-revoke style="margin-top:12px">Закрыть доступ на всех устройствах</button>';
+    const link=b.querySelector('#hours-invite');
+    if(link){
+      link.value=new URL('hours/#'+code,location.href).href;
+      b.querySelector('[data-copy]').onclick=async()=>{
+        try{ await navigator.clipboard.writeText(link.value); toast('Ссылка скопирована'); }
+        catch{ link.select(); }
+      };
+    }
+    const call=async(button,action)=>{
+      button.disabled=true;
+      try{
+        const {data,error}=await sb.functions.invoke('shift-hours',{body:{action}});
+        if(error || data?.error) throw error || new Error(data.error);
+        code=data.code||''; sh.top().render();
+        if(action==='revoke') toast('Доступ закрыт');
+      } catch{ toast('Не удалось обновить доступ',true); }
+      finally{ button.disabled=false; }
+    };
+    b.querySelector('[data-invite]').onclick=e=>call(e.currentTarget,'invite');
+    b.querySelector('[data-revoke]').onclick=async e=>{
+      const button=e.currentTarget;
+      if(await ask('Закрыть доступ ко всем приглашениям и подключённым устройствам?')) call(button,'revoke');
+    };
+  }});
 }
 function peopleLevel(sh,k){
   sh.push({title:k==='w'?'Операторы':'Кастомеры', render(b){

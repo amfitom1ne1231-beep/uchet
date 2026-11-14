@@ -1,0 +1,42 @@
+.hours [hidden]{display:none!important}
+.hours :focus-visible{outline:2px solid #8fb3ff;outline-offset:2px}
+.hours .screen{padding-bottom:calc(var(--sb) + 24px)}
+.hours-content{max-width:680px;margin:auto}
+.hours .big{padding:0;margin-bottom:18px}
+.hours .big h1{animation:headIn .48s var(--spring) both}
+.hours #controls{display:flex;align-items:center;gap:8px}
+.hours .segbig{flex:1;margin:0}
+.hours .segbig i{transform:translateX(calc(var(--period,1) * 100%))}
+.hours .segbig button:nth-child(2)[aria-pressed="true"]~i{transform:translateX(100%)}
+.hours #refresh{font-size:22px;padding:0;width:40px;height:40px}
+.hours #status:not(:empty){margin:14px 4px}
+.hours .connect{padding:16px}
+.hours .connect input{margin:8px 0 12px}
+.hours .shift-list{display:grid;gap:10px}
+.hours .shift-card{width:100%;text-align:left;display:block;padding:14px;border-radius:22px;
+  transition:transform .34s var(--spring);animation:rise .44s var(--spring) both}
+.hours .shift-card.tone-live{animation:rise .44s var(--spring) both,liveEdge 3.2s ease-in-out infinite}
+.hours .shift-card:active{transform:scale(.98)}
+.shift-head{display:flex;align-items:center;gap:12px}
+.shift-day{width:44px;flex:none;text-align:center;line-height:1.1}
+.shift-day b{display:block;font-size:25px}
+.shift-day small{font-size:11px;color:var(--t2)}
+.shift-range{flex:1;min-width:0}
+.shift-range small{display:block;color:var(--t2);margin-top:3px}
+.shift-hours{flex:none;text-align:right;font-size:16px}
+.shift-hours .chev{margin-left:6px;color:var(--t3)}
+.shift-pairs{display:block;margin-top:10px;border-top:1px solid var(--line);padding-top:5px}
+.shift-pair{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px}
+.shift-pair .avs{flex:none}
+.shift-pair .av{box-shadow:none}
+.shift-pair .people{flex:1;min-width:0;overflow-wrap:anywhere}
+.shift-pair b{text-align:right;flex:0 0 auto;max-width:38%;font-weight:550;color:var(--t2)}
+.shift-extra{margin-top:8px;display:grid;gap:5px;font-size:13px;color:var(--t2)}
+.shift-note{white-space:pre-wrap;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.shift-discount{color:#efc477}
+#shift-detail:not(.top):not(.closing){visibility:hidden}
+#shift-detail.top{transform:translateY(0)}
+#shift-detail .shift-note{display:block;-webkit-line-clamp:unset}
+#shift-detail .shift-extra{margin-top:14px}
+#shift-detail .tl{animation:fadein .42s var(--spring) both}
+@media(prefers-reduced-motion:reduce){.hours .shift-card,.hours .big h1{animation:none!important}}

@@ -1,6 +1,6 @@
 // Служебный воркер: держит оболочку приложения в кэше,
 // чтобы оно открывалось без интернета. Данные кэширует само приложение.
-const CACHE = 'uchet-v25';
+const CACHE = 'uchet-v26';
 const SHELL = [
   './',
   './index.html',
@@ -19,7 +19,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('uchet-v') && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -29,6 +29,8 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
 
   const url = new URL(req.url);
+
+  if (url.origin === self.location.origin && url.pathname.startsWith(new URL('hours/', self.registration.scope).pathname)) return;
 
   // запросы к базе и к боту не кэшируем никогда
   if (url.hostname.endsWith('supabase.co') || url.hostname.endsWith('telegram.org')) return;
