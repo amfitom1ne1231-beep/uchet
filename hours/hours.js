@@ -20,7 +20,7 @@ const shiftViews = new Map();
 let token = safeStorage.getItem(credentialKey);
 let loading = false;
 let connecting = false;
-let days = '30';
+let viewMode = 'pending';
 let activeCard = null;
 let closeTimer;
 
@@ -49,38 +49,60 @@ function updateData(data) {
     String(b.start_time || '').localeCompare(String(a.start_time || '')));
 }
 
-function overlapGroups(data) {
-  const [customers, workers] = data.groups.map(group => group.rows);
-  return workers.map((worker, index) => {
-    const partners = new Map();
-    for (const person of [...workers.slice(index + 1), ...customers]) {
-      const shared = spanLen(spanAnd(worker.activeSpans, person.activeSpans));
-      if (!shared) continue;
-      const total = data.unknownPause ? (worker.full ? person.ms : person.full ? worker.ms : null) : shared;
-      if (!partners.has(total)) partners.set(total, []);
-      partners.get(total).push(person.name);
-    }
-    return {name: worker.name, ms: worker.ms, partners};
-  });
-}
-
 function duration(data, ms) {
   return (data.estimated && ms != null ? '≈ ' : '') + attendanceDuration(ms);
 }
 
-function pairsHTML(data) {
-  const groupsByWorker = overlapGroups(data);
-  const people = groupsByWorker.length ? groupsByWorker : data.groups[0].rows.map(person => ({...person, partners:new Map()}));
-  return people.map(worker => {
-    const groups = worker.partners.size ? [...worker.partners] : [[worker.ms, []]];
-    return groups.map(([ms, names]) => {
-      const people = [worker.name, ...names];
-      const avatars = people.slice(0, 4).map(name => '<span class="av xs" style="--pc:' + personColor(name) + '">' + esc(initials(name)) + '</span>').join('');
-      return '<span class="shift-pair"><span class="avs" aria-hidden="true">' + avatars +
-        '</span><span class="people">' + esc(worker.name + (names.length ? ' с ' + names.join(', ') : '')) +
-        '</span><b class="num">' + duration(data, ms) + (names.length > 1 ? ' с каждым' : '') + '</b></span>';
-    }).join('');
+function operatorTeam(shift, data, isLive) {
+  const people = isLive ? liveWorkerSpans(shift, data.end) : shift.workerLinks.map(link => {
+    const recorded = pauseSpans(link.spans).filter(span => span.e);
+    return {id:link.id, spans:spanCut(recorded.length ? recorded : [{s:data.start,e:data.end}],data.start,data.end)};
+  });
+  const names = ids => ids.map(wName).join(' + ');
+  if (data.unknownTimes) return {name:names(people.map(person => person.id)), segments:[], changes:[]};
+  const boundaries = [...new Set([data.start, data.end, ...people.flatMap(person =>
+    person.spans.flatMap(span => [span.s, span.e]))])].sort((a,b) => a-b);
+  const segments = [];
+  for (let i=0;i<boundaries.length-1;i++) {
+    const s = boundaries[i], e = boundaries[i+1];
+    const ids = people.filter(person => person.spans.some(span => span.s <= s && span.e >= e)).map(person => person.id);
+    const previous = segments.at(-1);
+    if (previous && previous.ids.join() === ids.join()) previous.e = e;
+    else segments.push({s,e,ids});
+  }
+  const changes = segments.slice(1).map((segment,i) => {
+    const before = segments[i].ids;
+    const out = before.filter(id => !segment.ids.includes(id));
+    const incoming = segment.ids.filter(id => !before.includes(id));
+    return {at:segment.s,label:out.length && incoming.length ? names(out)+' → '+names(incoming) :
+      incoming.length ? 'Заступили: '+names(incoming) : 'Ушли: '+names(out)};
+  });
+  const initial = segments.find(segment => segment.ids.length)?.ids ?? [];
+  if (data.open) {
+    const active = people.filter(person => {
+      const entries = (shift.worker_log || []).filter(entry => entry.id === person.id);
+      return !entries.length || entries.some(entry => !entry.e);
+    }).map(person => person.id);
+    return {name:names(active),segments,changes};
+  }
+  return {name:names(initial),segments,changes};
+}
+
+function changesHTML(team, data) {
+  return team.changes.map(change => {
+    const at = khParts(change.at);
+    const date = at.d === khParts(data.start).d ? '' : dayText(at.d)+' · ';
+    return '<span class="shift-change"><span class="num">'+date+at.t+'</span><span>'+esc(change.label)+'</span></span>';
   }).join('');
+}
+
+function playersHTML(data) {
+  const players = data.groups[0].rows;
+  if (!players.length) return '';
+  return '<span class="shift-players"><span class="group-label">Игроки</span>' + players.map(player =>
+    '<span class="player-chip"><span class="av xs" aria-hidden="true" style="--pc:'+personColor(player.name)+'">'+
+    esc(initials(player.name))+'</span><span>'+esc(player.name)+'</span><b class="num">'+duration(data,player.ms)+'</b></span>'
+  ).join('')+'</span>';
 }
 
 function extrasHTML(shift) {
@@ -102,13 +124,15 @@ function renderShifts(section, title, shifts, getAttendance, isLive) {
     const range = data.unknownTimes ? 'Время начала не записано' : khParts(data.start).t + '–' +
       (data.open ? 'сейчас' : end.t + (end.d === date ? '' : ' · ' + dayText(end.d)));
     const key = (isLive ? 'live-' : 'saved-') + shift.id;
-    shiftViews.set(key, {shift, data, date, isLive});
+    const team = operatorTeam(shift,data,isLive);
+    shiftViews.set(key, {shift, data, date, isLive, team});
     return '<button class="shift-card card sheen ' + (data.open ? 'tone-live' : '') + '" data-shift="' + esc(key) +
       '" style="--d:' + -(i % 9) + 's" type="button" aria-haspopup="dialog"><span class="shift-head">' +
       '<span class="shift-day"><b class="num">' + day + '</b><small>' + monthNames[month - 1] + '</small></span>' +
       '<span class="shift-range"><b class="num">' + range + '</b>' + (state ? '<small>' + state + '</small>' : '') + '</span>' +
       '<span class="shift-hours num">' + duration(data, data.ms) + '<span class="chev">›</span></span></span>' +
-      '<span class="shift-pairs">' + pairsHTML(data) + '</span>' + extrasHTML(shift) + '</button>';
+      (team.name ? '<span class="operator-line"><span class="group-label">Операторы</span><b>'+esc(team.name)+'</b></span>' : '') +
+      changesHTML(team,data) + extrasHTML(shift) + playersHTML(data) + '</button>';
   }).join('') + '</div>' : '';
   if (section.rendered === html) return;
   const focused = document.activeElement?.dataset.shift;
@@ -116,21 +140,33 @@ function renderShifts(section, title, shifts, getAttendance, isLive) {
   if (focused) section.querySelector('[data-shift="' + CSS.escape(focused) + '"]')?.focus({preventScroll:true});
 }
 
+function teamTime(ms,data) {
+  const at = khParts(ms);
+  return (at.d === khParts(data.start).d ? '' : dayText(at.d)+' ') + at.t;
+}
+
 function renderDetail() {
   const view = shiftViews.get(activeCard);
   if (!view) return closeDetail(false);
-  const {data, shift, date, isLive} = view;
+  const {data, shift, date, isLive, team} = view;
   detail.querySelector('#shift-title').textContent = 'Смена · ' + dayText(date);
   const pauses = isLive ? livePauseSpans(shift, data.end) : pauseSpans(shift.pause_log).filter(p => p.e);
   if (isLive && data.open && shift.paused_at) pauses.push({s:Date.parse(shift.paused_at),e:data.end});
-  const rows = data.groups.flatMap((group,i) => group.rows.map(person => ({
-    name:person.name, w:i === 1, spans:person.intervals.map(p => ({s:p.s,e:p.e ?? data.end}))
-  })));
+  const players = data.groups[0];
+  const rows = players.rows.map(person => ({
+    name:person.name, spans:person.intervals.map(p => ({s:p.s,e:p.e ?? data.end}))
+  }));
+  if (team.segments.length) rows.unshift({name:'Операторы', w:true, spans:team.segments.filter(segment => segment.ids.length)});
   const timeline = data.unknownTimes ? '' : '<span class="cap">Лента смены</span><div class="tl">' +
     timelineHTML({start:data.start,end:data.end,pauses,rows}) + '</div>';
-  const pairs = pairsHTML(data);
-  const html = attendanceHTML(data) + (pairs ? '<span class="cap">Время вместе</span><div class="card">' + pairs + '</div>' : '') +
-    extrasHTML(shift) + timeline;
+  const lineup = team.segments.length > 1 ? team.segments.map(segment =>
+    '<div class="kv"><span class="num">'+teamTime(segment.s,data)+'–'+
+    (data.open && segment.e === data.end ? 'сейчас' : teamTime(segment.e,data))+'</span><b>'+
+    esc(segment.ids.map(wName).join(' + ') || 'Без операторов')+'</b></div>').join('') :
+    (team.name ? '<div class="kv"><b>'+esc(team.name)+'</b></div>' : '');
+  const html = (lineup ? '<span class="cap">Команда операторов</span><div class="card lineup">'+lineup+
+    changesHTML(team,data)+'</div>' : '') + timeline +
+    attendanceHTML({...data,groups:[{...players,title:'Игроки'}]}) + extrasHTML(shift);
   if (detailBody.rendered !== html) detailBody.innerHTML = detailBody.rendered = html;
 }
 
@@ -184,17 +220,23 @@ function closeDetail(restoreFocus = true) {
 }
 
 function render() {
-  const since = days === 'all' ? '' : khParts(nowMs() - (Number(days) - 1) * 864e5).d;
-  const shifts = S.shifts.filter(shift => shift.work_date >= since);
+  const archived = viewMode === 'archive';
+  const shifts = S.shifts.filter(shift => Boolean(shift.archived) === archived);
+  if (!archived) shifts.reverse();
   shiftViews.clear();
-  renderShifts(liveSection, 'Текущие смены', S.live, shift => liveAttendance(shift, nowMs()), true);
-  renderShifts(historySection, 'История смен', shifts, savedAttendance, false);
+  const liveShifts = archived ? [] : S.live;
+  renderShifts(liveSection, 'Сейчас', liveShifts, shift => liveAttendance(shift, nowMs()), true);
+  renderShifts(historySection, archived ? 'Оплаченные смены' : 'Завершённые смены', shifts, savedAttendance, false);
+  const summary = document.querySelector('#queue-summary');
+  summary.hidden = archived || !shifts.length;
+  summary.innerHTML = summary.hidden ? '' : '<div><span class="group-label">К расчёту</span><b class="num">'+shifts.length+
+    '</b></div><span class="t2">Самая ранняя · '+dayText(shifts[0].work_date)+'</span>';
   if (activeCard) renderDetail();
   const live = S.live.some(shift => !shift.finished_at);
   background.classList.toggle('pulse', live);
   background.style.setProperty('--c1', live ? '#ff3b30' : '#2f8f6a');
   background.style.setProperty('--c2', live ? '#ff7a45' : '#1f5f8b');
-  statusLine.textContent = shifts.length || S.live.length ? '' : 'За этот период смен нет.';
+  statusLine.textContent = shifts.length || liveShifts.length ? '' : archived ? 'Оплаченных смен пока нет.' : 'Все смены разобраны.';
 }
 
 function requestHours(body) {
@@ -279,12 +321,10 @@ connectForm.addEventListener('submit', async event => {
 app.addEventListener('click', event => {
   const card = event.target.closest('[data-shift]');
   if (card) openDetail(card);
-  const period = event.target.closest('[data-days]');
-  if (!period) return;
-  days = period.dataset.days;
-  const buttons = [...controls.querySelectorAll('[data-days]')];
-  buttons.forEach(button => button.setAttribute('aria-pressed',button === period));
-  period.parentElement.style.setProperty('--period',buttons.indexOf(period));
+  const tab = event.target.closest('[data-view]');
+  if (!tab) return;
+  viewMode = tab.dataset.view;
+  controls.querySelectorAll('[data-view]').forEach(button => button.setAttribute('aria-pressed',button === tab));
   render();
 });
 app.addEventListener('pointerdown', event => {
