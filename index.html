@@ -170,6 +170,11 @@ body.ro #plus{opacity:.25;pointer-events:none}
 .mdet.open{grid-template-rows:1fr}
 .kv{display:flex;justify-content:space-between;align-items:baseline;padding:7px 4px;font-size:15px}
 .kv span{color:var(--t2)} .kv b{font-weight:500}
+.attendance{padding:4px 10px}
+.attendance-person+.attendance-person{border-top:.5px solid var(--line)}
+.attendance-person .kv,.attendance-summary{gap:12px}
+.attendance-person .kv b,.attendance-summary b{text-align:right}
+.attendance-interval{font-size:13px;padding-left:16px}
 
 /* ползунок «протяни» */
 .slider{position:relative;height:60px;border-radius:30px;background:var(--card2);margin-top:16px;overflow:hidden;touch-action:none}
@@ -305,6 +310,7 @@ body.sheeted #scrim{opacity:1;pointer-events:auto;transition-duration:var(--open
 
 /* лента времени */
 .tl{position:relative;margin-top:6px}
+.tl[data-hold-timeline]{-webkit-touch-callout:none}
 .tl .ax{display:flex;justify-content:space-between;font-size:11px;color:var(--t3);margin:0 0 6px 64px}
 .tl .ln{display:flex;align-items:center;gap:8px;height:24px}
 .tl .ln span{width:56px;font-size:12px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -775,9 +781,9 @@ html,body{background:#000}
 <div id="done"><div class="glass"><svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div></div>
 <div id="gate"></div>
 
-<script>const APP_VERSION='2026-11-15.5';</script>
+<script>const APP_VERSION='2026-11-15.6';</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-<script src="core.js?v=2026-11-15.5"></script>
-<script src="app.js?v=2026-11-15.5"></script>
+<script src="core.js?v=2026-11-15.6"></script>
+<script src="app.js?v=2026-11-15.6"></script>
 </body>
 </html>

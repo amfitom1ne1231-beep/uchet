@@ -27,6 +27,50 @@ function dayLabel(ds){
 }
 const tHM=ms=>khParts(ms).t;
 const dur=ms=>{ const m=Math.round(ms/60000), h=Math.floor(m/60); return h+':'+z2(m%60); };
+const attendanceDuration=ms=>ms==null?'нет точного итога':ms===0?'0 мин':pauseText(Math.floor(ms/60000))||'меньше минуты';
+function attendanceText(data){
+  const date=khParts(data.start).d;
+  const at=ms=>{ const p=khParts(ms); return (p.d===date?'':dayText(p.d)+', ')+p.t; };
+  const timing=p=>data.unknownTimes?'':at(p.s)+'–'+(p.e==null?'сейчас':at(p.e));
+  const total=ms=>(data.estimated&&ms!=null?'≈ ':'')+attendanceDuration(ms);
+  const heading=(data.unknownTimes?'':timing({s:data.start,e:data.open?null:data.end})+' · ')+total(data.ms)+' без пауз';
+  const groups=data.groups.filter(g=>g.rows.length).map(g=>({title:g.title,rows:g.rows.map(r=>{
+    const intervals=r.intervals.map(p=>({time:timing(p),duration:total(p.ms)}));
+    const range=intervals.length===1?intervals[0].time:'';
+    return {name:r.name,duration:(range?range+' · ':'')+total(r.ms),intervals:intervals.length>1?intervals:[]};
+  })}));
+  return {heading,groups};
+}
+function attendanceHTML(data){
+  const {heading,groups}=attendanceText(data);
+  return '<div class="kv attendance-summary"><span>Вся смена</span><b>'+esc(heading)+'</b></div>'+
+    groups.map(g=>'<span class="cap">'+g.title+'</span><div class="card attendance">'+
+      g.rows.map(r=>'<div class="attendance-person"><div class="kv"><span>'+esc(r.name)+'</span><b>'+esc(r.duration)+'</b></div>'+
+        r.intervals.map(p=>'<div class="kv attendance-interval"><span>'+esc(p.time)+'</span><b>'+esc(p.duration)+'</b></div>').join('')+
+      '</div>').join('')+'</div>').join('');
+}
+async function copyAttendance(data){
+  const {heading,groups}=attendanceText(data);
+  const txt=dayText(khParts(data.start).d)+' · '+heading+'\n'+groups.map(g=>g.title+'\n'+
+    g.rows.map(r=>r.name+' · '+r.duration+r.intervals.map(p=>'\n  '+p.time+' · '+p.duration).join('')).join('\n')).join('\n');
+  try{ await navigator.clipboard.writeText(txt.trim()); toast('Время скопировано'); }
+  catch(_){ toast('Не скопировалось',true); }
+}
+function liveAttendanceSheet(id){
+  const get=()=>(S.live||[]).find(l=>l.id===id);
+  const sh=openSheet({detent:'full'});
+  sh.push({title:'Время по людям',live:true,render(b){
+    if(!get()){ sh.close(); return; }
+    b.innerHTML='<div data-attendance-live></div><button class="btn sec" data-copy-time style="margin-top:12px">Скопировать время</button>';
+    paintLiveAttendance(b.querySelector('[data-attendance-live]'),get());
+    b.querySelector('[data-copy-time]').onclick=()=>{ const l=get(); if(l) copyAttendance(liveAttendance(l,nowMs())); };
+  }});
+  sh.el.dataset.attendanceShift=id;
+}
+function paintLiveAttendance(el,l){
+  const html=attendanceHTML(liveAttendance(l,nowMs()));
+  if(el.attendanceHTML!==html){ el.innerHTML=html; el.attendanceHTML=html; }
+}
 function plural(n,a,b,c){ const x=n%10,y=n%100; return x===1&&y!==11?a:(x>=2&&x<=4&&(y<12||y>14)?b:c); }
 const freq=(kind)=>{   // кого чаще звали в последние 60 дней — наверх
   const from=new Date(Date.parse(today()+'T00:00Z')-60*864e5).toISOString().slice(0,10), n={};
@@ -582,8 +626,6 @@ function longDate(){ const t=today(), d=new Date(t+'T00:00Z');
 
 function personHTML(l,id,kind){
   const on=kind==='c'?seated(l,id):working(l,id), nm=kind==='c'?cName(id):wName(id);
-  const spans=(kind==='c'?livePlayerSpans(l,nowMs()):liveWorkerSpans(l,nowMs())).find(x=>x.id===id);
-  const ms=spans?spanLen(spanMinus(spans.spans,livePauseSpans(l,nowMs()))):0;
   return '<button class="pp '+(on?'on':'off')+'" data-p="'+kind+'|'+id+'" aria-label="'+esc(nm)+(kind==='c'?(on?', за столом':', встал'):(on?', на смене':', сменился'))+'"><div class="av" style="--pc:'+personColor(nm)+'">'+esc(initials(nm))+
     (kind==='c'&&l.payer_id===id?'<i class="coin">$</i>':'')+'</div><div class="pn">'+esc(nm)+'</div><div class="tm num" data-ptm="'+kind+'|'+id+'">'+pTime(l,id,kind)+'</div></button>';
 }
@@ -613,6 +655,7 @@ function liveCardHTML(l){
     return '<div class="card lcard fin sheen tone-debt" data-live="'+l.id+'">'+
       '<div class="hero" style="text-align:center;padding:18px 0 8px"><div class="v">'+moneyHTML(x.c.total)+'</div>'+
       '<div class="s">'+x.h+' '+hourWord(x.h)+' · '+tHM(x.s)+'–'+tHM(x.e)+' · '+esc((l.worker_ids||[]).map(wName).join(', '))+'</div></div>'+
+      '<button class="moneyline" data-attendance style="width:100%"><span>Время по людям</span><span class="chev" aria-hidden="true">›</span></button>'+
       (locked?'':'<button class="btn" data-open-fin style="margin-top:12px">Открыть итог</button>')+'</div>';
   }
   const ring='<svg viewBox="0 0 260 260" aria-hidden="true"><circle class="tr" cx="130" cy="130" r="120" fill="none" stroke-width="5"/>'+
@@ -629,6 +672,7 @@ function liveCardHTML(l){
       const by=me&&lg.find(x=>x.id!==id&&Math.abs(Date.parse(x.s)-Date.parse(me.e))<5*60e3);
       return personHTML(l,id,'w')+(by&&!working(l,id)?'<span class="swap" title="сменил">→</span>':''); }).join('')+
       (locked?'':'<button class="pp add" data-add="w"><div class="av">+</div><div class="tm"></div></button>')+'</div>'+
+    '<button class="moneyline" data-attendance style="width:100%"><span>Время по людям</span><span class="chev" aria-hidden="true">›</span></button>'+
     '<button class="moneyline" data-money aria-expanded="false" style="width:100%"><span>Разбивка оплаты</span><span class="chev" aria-hidden="true">⌄</span></button>'+
     '<div class="mdet"><div data-mdet></div></div>'+
     (locked?'':sliderHTML('закончить смену','data-finish'))+
@@ -646,6 +690,12 @@ function liveMoneyHTML(l){
 // раз в секунду: часы, кольцо, сумма. Кольцо — час; на 30-й минуте час уже в оплате (засечка).
 const lastHalf={};
 function tickLive(){
+  const sh=sheets[sheets.length-1];
+  if(sh?.el.dataset.attendanceShift){
+    const l=(S.live||[]).find(x=>x.id===sh.el.dataset.attendanceShift);
+    const el=sh.top().body.querySelector('[data-attendance-live]');
+    if(l&&el) paintLiveAttendance(el,l);
+  }
   document.querySelectorAll('.lcard[data-live]').forEach(function(card){
     const l=(S.live||[]).find(x=>x.id===card.dataset.live); if(!l||l.finished_at) return;
     const now=nowMs(), played=livePlayed(l,now), x=liveSummary(l,now);
@@ -678,6 +728,7 @@ function putLive(row){
 }
 function bindLiveCard(card){
   const id=card.dataset.live, L=()=>(S.live||[]).find(x=>x.id===id);
+  card.querySelector('[data-attendance]').onclick=()=>liveAttendanceSheet(id);
   const of=card.querySelector('[data-open-fin]'); if(of) of.onclick=()=>{ const l=L(); if(l) finishSheet(draftFromLive(l)); };
   const pb=card.querySelector('[data-pause]');
   // пауза ставится на экране сразу, сервер догоняет в фоне; не получилось — возвращаем как в базе и говорим об этом
@@ -1834,7 +1885,7 @@ function opSheet(oid){
 function shiftSheet(sid,fromEl){
   let s=S.shifts.find(x=>x.id===sid); if(!s) return;
   const sh=openSheet({detent:'full', from:fromEl&&fromEl.isConnected?fromEl:null});
-  sh.push({title:dayLabel(s.work_date)+(s.start_time?', '+hhmm(s.start_time)+'–'+tHM(shiftEndMs(s))+(plus1(s)?' (+1)':''):''), live:true, render(b){
+  sh.push({title:dayLabel(s.work_date)+(s.start_time?', '+hhmm(s.start_time)+'–'+tHM(shiftEndMs(s))+(plus1(s)?' (+1)':''):''), live:true, render(b,level){
     s=S.shifts.find(x=>x.id===sid)||s;
     const st=shiftStatus(s), ls=s.custLinks||[], dsum=ls.reduce((a,l)=>a+due(l),0);
     const flow='<div class="flow" data-flow><div class="col">'+(ls.length?ls.map(l=>'<div class="nd'+(due(l)>0.004?' debt':'')+'"><b class="num">'+m$(l.amount)+'</b>'+esc(cName(l.id))+(l.paid_by&&l.amount<=0.004?' · платит '+esc(cName(l.paid_by)):due(l)>0.004?(l.paidAmt>0.004?' · долг '+m$(due(l)):' · долг'):'')+'</div>').join(''):'<div class="nd">без кастомеров</div>')+'</div><div></div>'+
@@ -1852,9 +1903,10 @@ function shiftSheet(sid,fromEl){
         (st==='ok'?'рассчитано':st==='debt'?'долг '+m$(dsum):'без кастомеров')+' · '+s.hours+' '+hourWord(s.hours)+(s.discount?' · скидка '+m$(s.discount):'')+'</div></div>'+
       '<div class="acts">'+acts.join('')+'</div>'+
       '<span class="cap">Куда ушли деньги</span>'+flow+payHTML+
-      (s.start_time?'<span class="cap">Лента</span><div class="tl">'+timelineHTML({start:shiftStart(s),end:shiftEndMs(s),pauses:pauseSpans(s.pause_log).filter(p=>p.e),
+      (s.start_time?'<span class="cap">Лента · удержи для подробностей</span><div class="tl" data-hold-timeline role="button" tabindex="0" aria-label="Время по людям">'+timelineHTML({start:shiftStart(s),end:shiftEndMs(s),pauses:pauseSpans(s.pause_log).filter(p=>p.e),
         rows:ls.map(l=>({name:cName(l.id),spans:pauseSpans(l.spans).filter(p=>p.e).length?pauseSpans(l.spans).filter(p=>p.e):[{s:shiftStart(s),e:shiftEndMs(s)}]}))
           .concat((s.workerLinks&&s.workerLinks.length?s.workerLinks:s.workerIds.map(id=>({id:id,spans:[]}))).map(w=>({name:wName(w.id),w:1,spans:pauseSpans(w.spans).filter(p=>p.e).length?pauseSpans(w.spans).filter(p=>p.e):[{s:shiftStart(s),e:shiftEndMs(s)}]})))})+'</div>':'')+
+      (s.start_time?'':'<button class="moneyline" data-open-attendance style="width:100%"><span>Время по людям</span><span class="chev" aria-hidden="true">›</span></button>')+
       '<span class="cap">Подробности</span><div class="card" style="padding:6px 14px">'+
         (s.pause_min?'<div class="kv"><span>Паузы</span><b>'+pauseText(s.pause_min)+'</b></div>'+(pauseSpans(s.pause_log).filter(p=>p.e).length?'<div class="note" style="margin:0 4px 6px">'+pauseSpans(s.pause_log).filter(p=>p.e).map(p=>tHM(p.s)+'–'+tHM(p.e)).join(', ')+'</div>':''):'')+
         (s.discount?'<div class="kv"><span>Скидка</span><b>'+m$(s.discount)+'</b></div>':'')+
@@ -1863,6 +1915,24 @@ function shiftSheet(sid,fromEl){
     const se=b.querySelector('[data-settle]'); if(se) se.onclick=()=>{ sh.close(); setTimeout(()=>settleShiftSheet(sid),220); };
     const ed=b.querySelector('[data-edit]'); if(ed) ed.onclick=()=>editShift(sid);
     b.querySelector('[data-copy]').onclick=()=>copyShift(s);
+    const openAttendance=()=>{
+      if(sh.closed||sh.top()!==level) return;
+      sh.push({title:'Время по людям',live:true,render(body){
+        const data=savedAttendance(S.shifts.find(x=>x.id===sid)||s);
+        body.innerHTML=attendanceHTML(data)+'<button class="btn sec" data-copy-time style="margin-top:12px">Скопировать время</button>';
+        body.querySelector('[data-copy-time]').onclick=()=>copyAttendance(data);
+      }});
+    };
+    const timeline=b.querySelector('[data-hold-timeline]');
+    if(timeline){
+      longPress(timeline,()=>{ if(timeline.isConnected) openAttendance(); });
+      timeline.onclick=e=>{ if(e.detail===0) openAttendance(); };
+      timeline.onkeydown=e=>{
+        if(e.key!=='Enter'&&e.key!==' ') return;
+        e.preventDefault();
+        openAttendance();
+      };
+    } else b.querySelector('[data-open-attendance]').onclick=openAttendance;
     const dl=b.querySelector('[data-del]'); if(dl) dl.onclick=()=>deleteShift(sid);
     b.querySelectorAll('[data-pay]').forEach(x=>x.onclick=()=>paymentSheet(x.dataset.pay));
     requestAnimationFrame(()=>drawFlow(b.querySelector('[data-flow]')));

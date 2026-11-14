@@ -256,6 +256,56 @@ function shiftStatus(s){
 const shiftStart=s=>{ const t=String(s.start_time||'12:00:00'); return Date.parse(s.work_date+'T'+(t.length>=8?t.slice(0,8):t.slice(0,5)+':00')+'Z')-KH_OFF; };
 const khTimeSec=ms=>{ const d=new Date(ms+KH_OFF); return z2(d.getUTCHours())+':'+z2(d.getUTCMinutes())+':'+z2(d.getUTCSeconds()); };
 const shiftEndMs=s=>s.ended_at ? Date.parse(s.ended_at) : shiftStart(s)+(s.hours*60+(s.pause_min||0))*60e3;
+function attendanceRow(name,spans,pauses,start,end,open=false,unknownPause=0){
+  const full=spans.length===1&&spans[0].s===start&&spans[0].e===end;
+  const intervals=spans.map((p,i)=>({
+    s:p.s, e:open&&i===spans.length-1?null:p.e,
+    ms:unknownPause&&!full?null:Math.max(0,spanLen(spanMinus([p],pauses))-unknownPause),
+  }));
+  const ms=intervals.some(p=>p.ms==null)?null:intervals.reduce((sum,p)=>sum+p.ms,0);
+  return {name,intervals,ms};
+}
+function liveAttendance(l,now){
+  const start=Date.parse(l.started_at), end=l.finished_at?Date.parse(l.finished_at):now;
+  const pauses=livePauseSpans(l,now);
+  if(l.paused_at&&!l.finished_at) pauses.push({s:Date.parse(l.paused_at),e:end});
+  const merged=spanCut(pauses,start,end);
+  const ms=livePlayed(l,now)*1000, extra=end-start-ms-spanLen(merged);
+  const row=(p,name,log)=>{
+    const entries=(Array.isArray(log)?log:[]).filter(x=>x.id===p.id);
+    const openEntry=entries.find(x=>!x.e);
+    const openStart=openEntry?Math.max(start,Date.parse(openEntry.s)):entries.length?NaN:start;
+    const open=!l.finished_at&&openStart<=end;
+    const spans=open&&openStart===end&&p.spans.at(-1)?.e!==end?p.spans.concat({s:end,e:end}):p.spans;
+    return attendanceRow(name(p.id),spans,merged,start,end,open,extra>=1000?extra:0);
+  };
+  return {
+    start,end,ms,
+    groups:[
+      {title:'Кастомеры',rows:livePlayerSpans(l,now).map(p=>row(p,cName,l.customer_log))},
+      {title:'Операторы',rows:liveWorkerSpans(l,now).map(p=>row(p,wName,l.worker_log))},
+    ],
+    open:!l.finished_at,
+  };
+}
+function savedAttendance(s){
+  const start=shiftStart(s), end=shiftEndMs(s);
+  const pauses=spanCut(pauseSpans(s.pause_log).filter(p=>p.e),start,end);
+  const pauseMs=spanLen(pauses), unknownPause=Math.round(pauseMs/60000)<s.pause_min?s.pause_min*60000-pauseMs:0;
+  const row=(id,links,name)=>{
+    const recorded=pauseSpans(links?.find(l=>l.id===id)?.spans).filter(p=>p.e);
+    const spans=spanCut(recorded.length?recorded:[{s:start,e:end}],start,end);
+    return attendanceRow(name(id),spans,pauses,start,end,false,unknownPause);
+  };
+  return {
+    start,end,ms:Math.max(0,end-start-pauseMs-unknownPause),estimated:!s.ended_at,
+    unknownTimes:!s.start_time&&!s.ended_at,
+    groups:[
+      {title:'Кастомеры',rows:s.customerIds.map(id=>row(id,s.custLinks,cName))},
+      {title:'Операторы',rows:s.workerIds.map(id=>row(id,s.workerLinks,wName))},
+    ],
+  };
+}
 // хронология для расчета: от старых смен к новым — как в базе (settle)
 const byOld=(a,b)=> (a.work_date<b.work_date?-1:a.work_date>b.work_date?1:0) ||
   String(hhmm(a.start_time)||'').localeCompare(String(hhmm(b.start_time)||'')) || String(a.created_at||'').localeCompare(String(b.created_at||''));
