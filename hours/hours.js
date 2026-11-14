@@ -391,30 +391,26 @@ const billboard = document.querySelector('#billboard');
 const billboardScenes = billboard.querySelector('.billboard-scenes');
 const billboardDots = billboard.querySelector('.billboard-dots');
 const billboardToggle = billboard.querySelector('.billboard-toggle');
-const sceneNames = {today:'Сегодня',queue:'К расчёту'};
-let scene = 'today';
+let scene = 'queue';
 let sceneTimer;
 let billboardPaused = false;
 let runningIds = [];
 let previousRunning = new Map();
 let finishedScene;
 let greetingUntil = 0;
-const sceneTitle = key => sceneNames[key] || 'Текущая смена';
+const sceneTitle = key => key === 'queue' ? 'К расчёту' : 'Текущая смена';
 
 function scheduleScene() {
   clearTimeout(sceneTimer);
   if (billboard.hidden || billboardPaused || document.hidden) return;
-  const special = scene === 'hello' || scene === 'finished';
-  if (!special && (reduceMotion.matches || runningIds.length)) return;
-  const delay = special ? Math.max(0,(scene === 'hello' ? greetingUntil : finishedScene?.until || 0)-Date.now()) : 8000;
+  if (scene !== 'hello' && scene !== 'finished') return;
+  const until = scene === 'hello' ? greetingUntil : finishedScene?.until || 0;
   sceneTimer = setTimeout(() => {
-    if (special) {
-      greetingUntil = 0;
-      finishedScene = null;
-      selectScene(runningIds.at(-1) || 'today');
-      renderBillboard();
-    } else selectScene(scene === 'today' ? 'queue' : 'today');
-  },delay);
+    greetingUntil = 0;
+    finishedScene = null;
+    selectScene(runningIds.at(-1) || 'queue');
+    renderBillboard();
+  },Math.max(0,until-Date.now()));
 }
 
 function selectScene(key) {
@@ -452,7 +448,8 @@ billboard.addEventListener('touchend',event=>{
   const t=event.changedTouches[0], dx=t.clientX-touchStart.x, dy=t.clientY-touchStart.y;
   touchStart=null;
   if(Math.abs(dx)<42 || Math.abs(dx)<Math.abs(dy)*1.3) return;
-  const keys=[...runningIds,'today','queue'];
+  const keys=[...runningIds,'queue'];
+  if (keys.length < 2) return;
   const index=keys.indexOf(scene);
   chooseScene(keys[(index<0 ? 0 : index+(dx<0?1:-1)+keys.length)%keys.length]);
 },{passive:true});
@@ -502,8 +499,6 @@ function renderBillboard() {
   if (billboard.hidden) { clearTimeout(sceneTimer); billboard.sceneKeys=''; billboardScenes.replaceChildren(); return; }
   const now = nowMs();
   const date = khParts(now).d;
-  const records = S.shifts.filter(shift=>shift.work_date===date).map(savedAttendance).concat(
-    S.live.filter(shift=>khParts(Date.parse(shift.started_at)).d===date).map(shift=>liveAttendance(shift,now)));
   const pending = S.shifts.filter(shift=>!shift.archived);
   const oldest = pending.at(-1);
   const values = new Map();
@@ -524,12 +519,10 @@ function renderBillboard() {
       '<button type="button" class="billboard-detail" data-live-detail="'+esc(key)+'">Подробности ›</button></div></div>'+
       miniTimeline(shift,data,team)+extrasHTML(shift)+playersHTML(data,shift,key));
   }
-  values.set('today','<span class="scene-label">Сегодня · '+dayText(date)+'</span><strong class="scene-value num">'+
-    totalDuration(records)+'</strong><span class="scene-caption">Всего времени без пауз</span><span class="scene-footer">Смен за сегодня · '+records.length+'</span>');
   values.set('queue','<span class="scene-label">К расчёту</span><strong class="scene-value num">'+pending.length+
     '</strong><span class="scene-caption">'+(oldest?'Самая ранняя · '+dayText(oldest.work_date):'Очередь пуста')+'</span>');
   const keys = [...values.keys()].join(',');
-  const target = values.has(scene) ? scene : runningIds.at(-1) || 'today';
+  const target = values.has(scene) ? scene : runningIds.at(-1) || 'queue';
   for (const node of [...billboardScenes.children]) {
     if (values.has(node.dataset.scene)) { node.retiring = false; continue; }
     if (node.retiring) continue;
@@ -550,7 +543,8 @@ function renderBillboard() {
   if (billboard.sceneKeys !== keys) {
     const focusedScene=billboardDots.contains(document.activeElement) ? document.activeElement.dataset.scene : null;
     billboard.sceneKeys=keys;
-    billboardDots.innerHTML=[...runningIds,'today','queue'].map((key,i)=>'<button type="button" data-scene="'+esc(key)+
+    billboardDots.hidden = !runningIds.length;
+    billboardDots.innerHTML=(runningIds.length ? [...runningIds,'queue'] : []).map((key,i)=>'<button type="button" data-scene="'+esc(key)+
       '" aria-label="'+sceneTitle(key)+(key.startsWith('live-') && runningIds.length>1?' '+(i+1):'')+'"></button>').join('');
     selectScene(target);
     if(focusedScene) billboardDots.querySelector('[data-scene="'+CSS.escape(focusedScene)+'"]')?.focus({preventScroll:true});
