@@ -25,7 +25,10 @@ let channel;
 let channelTopic;
 let channelReady = false;
 let receivedSnapshot = false;
-const syncState = document.querySelector('#sync-state');
+let viewerName = '';
+let playerView;
+let playerPeriod = 30;
+let playerTrigger;
 const realtimeClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:'shift-hours-realtime'},
 });
@@ -106,12 +109,13 @@ function changesHTML(team, data) {
   }).join('');
 }
 
-function playersHTML(data) {
+function playersHTML(data, shift, key) {
   const players = data.groups[0].rows;
   if (!players.length) return '';
-  return '<span class="shift-players"><span class="group-label">Игроки</span>' + players.map(player =>
-    '<span class="player-chip"><span class="av xs" aria-hidden="true" style="--pc:'+personColor(player.name)+'">'+
-    esc(initials(player.name))+'</span><span>'+esc(player.name)+'</span><b class="num">'+duration(data,player.ms)+'</b></span>'
+  const ids = shift.customerIds || shift.customer_ids || [];
+  return '<span class="shift-players"><span class="group-label">Игроки</span>' + players.map((player,i) =>
+    '<button type="button" class="player-chip" data-player="'+esc(ids[i])+'" data-source="'+esc(key)+'"><span class="av xs" aria-hidden="true" style="--pc:'+personColor(player.name)+'">'+
+    esc(initials(player.name))+'</span><span>'+esc(player.name)+'</span><b class="num">'+duration(data,player.ms)+'</b></button>'
   ).join('')+'</span>';
 }
 
@@ -169,21 +173,21 @@ function renderShifts(section, title, shifts, getAttendance, isLive) {
       '<span class="shift-range"><b class="num">' + range + '</b>' + (state ? '<small>' + state + '</small>' : '') + '</span>' +
       '<span class="shift-hours num">' + (data.open ? '<span class="live-clock" data-clock></span>' : duration(data,data.ms)) + '<span class="chev">›</span></span></span>' +
       (team.name ? '<span class="operator-line"><span class="group-label">Операторы</span><b>'+esc(team.name)+'</b></span>' : '') +
-      (isLive ? miniTimeline(shift,data,team) : changesHTML(team,data)) + extrasHTML(shift) + playersHTML(data);
+      (isLive ? miniTimeline(shift,data,team) : changesHTML(team,data)) + extrasHTML(shift);
     let card = previous.get(key);
     if (!card) {
-      card = document.createElement('button');
+      card = document.createElement('article');
       card.className = 'shift-card card sheen';
-      card.type = 'button';
       card.dataset.shift = key;
-      card.setAttribute('aria-haspopup','dialog');
       card.style.setProperty('--d',-(i % 9)+'s');
       if (receivedSnapshot && data.open) card.classList.add('shift-arrived');
     }
     previous.delete(key);
     card.classList.toggle('tone-live',data.open);
     card.classList.toggle('shift-paused',data.open && !!shift.paused_at);
-    if (card.rendered !== html) card.innerHTML = card.rendered = html;
+    const content = '<button type="button" class="shift-open" aria-haspopup="dialog" aria-label="Подробности смены">'+html+
+      '</button>'+playersHTML(data,shift,key);
+    if (card.rendered !== content) card.innerHTML = card.rendered = content;
     return card;
   });
   for (const card of previous.values()) card.remove();
@@ -196,19 +200,23 @@ function paintClocks() {
     const time = card.querySelector('[data-clock]');
     const shift = shiftViews.get(card.dataset.shift)?.shift;
     if (!shift) continue;
+    paintTrack(card,shift,nowMs());
+    if (time) {
+      const value = clock(livePlayed(shift,nowMs()));
+      if (time.textContent !== value) time.textContent = value;
+    }
+  }
+}
+
+function paintTrack(card,shift,now) {
     const start = Date.parse(shift.started_at);
-    const end = shift.finished_at ? Date.parse(shift.finished_at) : nowMs();
+    const end = shift.finished_at ? Date.parse(shift.finished_at) : now;
     const position = at => Math.min(100,Math.max(0,(at-start)/Math.max(1,end-start)*100));
     for (const mark of card.querySelectorAll('[data-at]')) {
       const left = position(Number(mark.dataset.at));
       mark.style.left = left+'%';
       if ('until' in mark.dataset) mark.style.width = Math.max(0,position(Number(mark.dataset.until) || end)-left)+'%';
     }
-    if (time) {
-      const value = clock(livePlayed(shift,nowMs()));
-      if (time.textContent !== value) time.textContent = value;
-    }
-  }
 }
 
 function teamTime(ms,data) {
@@ -241,6 +249,62 @@ function renderDetail() {
   if (detailBody.rendered !== html) detailBody.innerHTML = detailBody.rendered = html;
 }
 
+function playerRecord(shift,id,live,now) {
+  const ids = live ? shift.customer_ids || [] : shift.customerIds;
+  const index = ids.indexOf(id);
+  if (index < 0) return null;
+  const data = live ? liveAttendance(shift,now) : savedAttendance(shift);
+  const row = data.groups[0].rows[index];
+  const team = live && data.open ? operatorTeam(shift,data,true).name :
+    (live ? shift.worker_ids || [] : shift.workerIds).map(wName).join(' + ');
+  return {data,row,team,date:shift.work_date || khParts(data.start).d};
+}
+
+function renderPlayer() {
+  const {id,source} = playerView;
+  const now = nowMs();
+  const view = shiftViews.get(source);
+  const sourceId = source.slice(source.indexOf('-')+1);
+  const selected = view?.shift || (source.startsWith('live-') ? S.live : S.shifts).find(shift => shift.id === sourceId);
+  const current = (selected && playerRecord(selected,id,source.startsWith('live-'),now)) ||
+    S.live.filter(shift=>!shift.finished_at).map(shift=>playerRecord(shift,id,true,now)).find(Boolean);
+  const since = playerPeriod ? khParts(now-(playerPeriod-1)*864e5).d : '';
+  const records = S.shifts.filter(shift=>shift.work_date>=since).map(shift=>playerRecord(shift,id,false,now))
+    .concat(S.live.map(shift=>playerRecord(shift,id,true,now)).filter(record=>record && record.date>=since))
+    .filter(Boolean).sort((a,b)=>b.data.start-a.data.start);
+  const known = records.filter(record=>record.row.ms!=null);
+  const sum = totalDuration(known.map(({data,row})=>({ms:row.ms,estimated:data.estimated})));
+  detail.querySelector('#shift-title').textContent = cName(id);
+  const header = current ? '<span class="cap">В этой смене'+
+    '</span><div class="card player-summary">'+attendanceHTML({...current.data,groups:[{title:'Интервалы игрока',rows:[current.row]}]})+'</div>' : '';
+  const periods = '<div class="seg player-period" role="group" aria-label="Период">'+[[7,'7 дней'],[30,'30 дней'],[0,'Всё время']].map(([days,label])=>
+    '<button type="button" data-player-period="'+days+'" aria-pressed="'+(playerPeriod===days)+'">'+label+'</button>').join('')+'</div>';
+  const html = header+'<span class="cap">Сводка</span>'+periods+
+    '<div class="card player-summary"><strong>'+ (known.length || !records.length ? sum : 'Нет точного итога')+
+    '</strong><p>Смен · '+records.length+(known.length && known.length!==records.length ? ' · есть неполные записи' : '')+'</p></div>'+
+    records.map(({data,row,team,date})=>'<div class="card player-record"><div><b>'+dayText(date)+'</b><span>'+esc(team)+
+      '</span></div><b class="num">'+duration(data,row.ms)+'</b></div>').join('');
+  if (detailBody.rendered !== html) {
+    const focus = document.activeElement?.dataset.playerPeriod;
+    detailBody.innerHTML = detailBody.rendered = html;
+    if(focus!=null) detailBody.querySelector('[data-player-period="'+focus+'"]')?.focus({preventScroll:true});
+  }
+}
+
+function openPlayer(button) {
+  if (closeTimer) return;
+  playerTrigger = button;
+  playerView = {id:button.dataset.player,source:button.dataset.source};
+  playerPeriod = 30;
+  renderPlayer();
+  detail.querySelector('.level').scrollTop = 0;
+  detail.inert = false;
+  detail.classList.add('top');
+  document.body.classList.add('sheeted');
+  closeButton.focus({preventScroll:true});
+  app.inert = true;
+}
+
 function cardClip(card) {
   const from = card.getBoundingClientRect();
   const to = detail.getBoundingClientRect();
@@ -249,9 +313,9 @@ function cardClip(card) {
 }
 
 const openClip = 'inset(0px 0px 0px 0px round 22px)';
-function openDetail(card) {
+function openDetail(card,key=card.dataset.shift) {
   if (activeCard || closeTimer) return;
-  activeCard = card.dataset.shift;
+  activeCard = key;
   renderDetail();
   detail.querySelector('.level').scrollTop = 0;
   detail.inert = false;
@@ -269,8 +333,10 @@ function openDetail(card) {
 }
 
 function closeDetail(restoreFocus = true) {
-  if (!activeCard) return;
-  const card = app.querySelector('[data-shift="' + CSS.escape(activeCard) + '"]');
+  if (!activeCard && !playerView) return;
+  const card = playerView ? (playerTrigger?.isConnected ? playerTrigger : app.querySelector('[data-player="'+CSS.escape(playerView.id)+'"]')) :
+    app.querySelector('[data-shift="' + CSS.escape(activeCard) + '"]');
+  playerView = playerTrigger = null;
   activeCard = null;
   detail.inert = true;
   app.inert = false;
@@ -287,7 +353,7 @@ function closeDetail(restoreFocus = true) {
     [...detail.getAnimations(), ...detailBody.getAnimations()].forEach(animation => animation.cancel());
     closeTimer = null;
   },380);
-  if (restoreFocus) card?.focus({preventScroll:true});
+  if (restoreFocus) (card?.querySelector('.shift-open') || card || billboard.querySelector('.is-current [data-live-detail]'))?.focus({preventScroll:true});
 }
 
 function totalDuration(records) {
@@ -325,26 +391,39 @@ const billboard = document.querySelector('#billboard');
 const billboardScenes = billboard.querySelector('.billboard-scenes');
 const billboardDots = billboard.querySelector('.billboard-dots');
 const billboardToggle = billboard.querySelector('.billboard-toggle');
-const sceneNames = {live:'Текущая смена',today:'Сегодня',queue:'К расчёту'};
+const sceneNames = {today:'Сегодня',queue:'К расчёту'};
 let scene = 'today';
 let sceneTimer;
 let billboardPaused = false;
+let runningIds = [];
+let previousRunning = new Map();
+let finishedScene;
+let greetingUntil = 0;
+const sceneTitle = key => sceneNames[key] || 'Текущая смена';
 
 function scheduleScene() {
   clearTimeout(sceneTimer);
-  if (billboard.hidden || billboardPaused || reduceMotion.matches || document.hidden) return;
+  if (billboard.hidden || billboardPaused || document.hidden) return;
+  const special = scene === 'hello' || scene === 'finished';
+  if (!special && (reduceMotion.matches || runningIds.length)) return;
+  const delay = special ? Math.max(0,(scene === 'hello' ? greetingUntil : finishedScene?.until || 0)-Date.now()) : 8000;
   sceneTimer = setTimeout(() => {
-    const scenes = [...billboardScenes.children].map(node => node.dataset.scene);
-    selectScene(scenes[(scenes.indexOf(scene)+1)%scenes.length]);
-  },8000);
+    if (special) {
+      greetingUntil = 0;
+      finishedScene = null;
+      selectScene(runningIds.at(-1) || 'today');
+      renderBillboard();
+    } else selectScene(scene === 'today' ? 'queue' : 'today');
+  },delay);
 }
 
 function selectScene(key) {
+  if (!billboardScenes.querySelector('[data-scene="'+CSS.escape(key)+'"]')) return;
   scene = key;
-  billboard.dataset.scene = key;
   for (const node of billboardScenes.children) {
     const active = node.dataset.scene === key;
     node.classList.toggle('is-current',active);
+    node.inert = !active;
     node.setAttribute('aria-hidden',String(!active));
   }
   for (const button of billboardDots.children) {
@@ -353,10 +432,30 @@ function selectScene(key) {
   scheduleScene();
 }
 
+function chooseScene(key) {
+  greetingUntil = 0;
+  finishedScene = null;
+  selectScene(key);
+  renderBillboard();
+}
 billboardDots.addEventListener('click',event => {
   const button = event.target.closest('button');
-  if (button) selectScene(button.dataset.scene);
+  if (button) chooseScene(button.dataset.scene);
 });
+let touchStart;
+billboard.addEventListener('touchstart',event=>{
+  const t=event.changedTouches[0];
+  touchStart={x:t.clientX,y:t.clientY};
+},{passive:true});
+billboard.addEventListener('touchend',event=>{
+  if(!touchStart) return;
+  const t=event.changedTouches[0], dx=t.clientX-touchStart.x, dy=t.clientY-touchStart.y;
+  touchStart=null;
+  if(Math.abs(dx)<42 || Math.abs(dx)<Math.abs(dy)*1.3) return;
+  const keys=[...runningIds,'today','queue'];
+  const index=keys.indexOf(scene);
+  chooseScene(keys[(index<0 ? 0 : index+(dx<0?1:-1)+keys.length)%keys.length]);
+},{passive:true});
 billboardToggle.onclick = () => {
   billboardPaused = !billboardPaused;
   billboard.classList.toggle('motion-paused',billboardPaused);
@@ -367,57 +466,112 @@ billboardToggle.onclick = () => {
 };
 reduceMotion.addEventListener('change',scheduleScene);
 
+function greeting() {
+  const hour = Number(khParts(nowMs()).t.slice(0,2));
+  const text = hour>=5 && hour<12 ? 'Доброе утро' : hour>=12 && hour<18 ? 'Добрый день' :
+    hour>=18 && hour<23 ? 'Добрый вечер' : 'Доброй ночи';
+  return text + (viewerName ? ', '+viewerName : '');
+}
+
+function captureLiveChange() {
+  const next = new Map(S.live.filter(shift=>!shift.finished_at).map(shift=>[shift.id,shift]));
+  const started = [...next.keys()].filter(id=>!previousRunning.has(id)).at(-1);
+  const ended = [...previousRunning.keys()].filter(id=>!next.has(id)).at(-1);
+  if (started && !greetingUntil) {
+    finishedScene = null;
+    scene = 'live-'+started;
+  } else if (ended && !greetingUntil) {
+    const finished = S.live.find(shift=>shift.id===ended && shift.finished_at);
+    const before = previousRunning.get(ended);
+    const start = Date.parse(before.started_at);
+    const saved = S.shifts.find(shift=>Math.abs(shiftStart(shift)-start)<60000 &&
+      shift.workerIds.some(id=>(before.worker_ids || []).includes(id)));
+    const data = finished ? liveAttendance(finished,nowMs()) : saved ? savedAttendance(saved) : null;
+    if (data) {
+      const shift = finished || saved;
+      finishedScene = {data,team:operatorTeam(shift,data,!!finished),until:Date.now()+4500};
+      scene = 'finished';
+    }
+  }
+  previousRunning = next;
+  runningIds = [...next.keys()].map(id=>'live-'+id);
+}
+
 function renderBillboard() {
   billboard.hidden = !receivedSnapshot;
-  if (billboard.hidden) { clearTimeout(sceneTimer); return; }
+  if (billboard.hidden) { clearTimeout(sceneTimer); billboard.sceneKeys=''; billboardScenes.replaceChildren(); return; }
   const now = nowMs();
   const date = khParts(now).d;
-  const saved = S.shifts.filter(shift => shift.work_date === date);
-  const live = S.live.filter(shift => khParts(Date.parse(shift.started_at)).d === date);
-  const records = saved.map(savedAttendance).concat(live.map(shift => liveAttendance(shift,now)));
-  const pending = S.shifts.filter(shift => !shift.archived);
+  const records = S.shifts.filter(shift=>shift.work_date===date).map(savedAttendance).concat(
+    S.live.filter(shift=>khParts(Date.parse(shift.started_at)).d===date).map(shift=>liveAttendance(shift,now)));
+  const pending = S.shifts.filter(shift=>!shift.archived);
   const oldest = pending.at(-1);
-  const running = S.live.filter(shift => !shift.finished_at);
-  const current = running.at(-1);
   const values = new Map();
-  if (current) {
-    const attendance = liveAttendance(current,now);
-    const team = operatorTeam(current,attendance,true);
-    values.set('live', {
-      label:current.paused_at ? 'На паузе' : 'Смена идёт',
-      value:'<span data-billboard-clock></span>',
-      caption:team.name || 'Начало · '+teamTime(attendance.start,attendance),
-      footer:running.length > 1 ? 'Смен сейчас · '+running.length : 'Время без пауз',
-    });
+  if (greetingUntil) values.set('hello','<span class="scene-label">'+dayText(date)+'</span><strong class="scene-greeting">'+esc(greeting())+'</strong>');
+  if (finishedScene) values.set('finished','<span class="scene-label">Смена завершена</span><strong class="scene-value num">'+
+    duration(finishedScene.data,finishedScene.data.ms)+'</strong><span class="scene-caption">'+esc(finishedScene.team.name)+'</span>');
+  for (const [id,shift] of previousRunning) {
+    const key = 'live-'+id;
+    const data = liveAttendance(shift,now);
+    const team = operatorTeam(shift,data,true);
+    shiftViews.set(key,{shift,data,date:khParts(data.start).d,isLive:true,team});
+    values.set(key,'<div class="live-board-head"><div class="live-dial" data-live-dial="'+esc(id)+'">'+
+      '<span class="live-dial-center"><b class="num" data-billboard-clock></b><small>без пауз</small></span></div>'+
+      '<div class="live-board-meta"><span class="live-board-status'+(shift.paused_at?' paused':'')+'">'+
+      (shift.paused_at?'Пауза':'Смена идёт')+'</span>'+
+      (shift.paused_at?'<span class="num" data-pause-clock></span>':'')+
+      (team.name?'<span class="group-label">Операторы</span><b>'+esc(team.name)+'</b>':'')+
+      '<button type="button" class="billboard-detail" data-live-detail="'+esc(key)+'">Подробности ›</button></div></div>'+
+      miniTimeline(shift,data,team)+extrasHTML(shift)+playersHTML(data,shift,key));
   }
-  values.set('today',{label:'Сегодня · '+dayText(date),value:totalDuration(records),
-    caption:'Всего времени без пауз',footer:'Смен за сегодня · '+records.length});
-  values.set('queue',{label:'К расчёту',value:String(pending.length),caption:'Смен ждут расчёта',
-    footer:oldest ? 'Самая ранняя · '+dayText(oldest.work_date) : 'Очередь пуста'});
+  values.set('today','<span class="scene-label">Сегодня · '+dayText(date)+'</span><strong class="scene-value num">'+
+    totalDuration(records)+'</strong><span class="scene-caption">Всего времени без пауз</span><span class="scene-footer">Смен за сегодня · '+records.length+'</span>');
+  values.set('queue','<span class="scene-label">К расчёту</span><strong class="scene-value num">'+pending.length+
+    '</strong><span class="scene-caption">'+(oldest?'Самая ранняя · '+dayText(oldest.work_date):'Очередь пуста')+'</span>');
   const keys = [...values.keys()].join(',');
+  const target = values.has(scene) ? scene : runningIds.at(-1) || 'today';
+  for (const node of [...billboardScenes.children]) {
+    if (values.has(node.dataset.scene)) { node.retiring = false; continue; }
+    if (node.retiring) continue;
+    node.retiring = true;
+    setTimeout(()=>{if(node.retiring) node.remove();},750);
+  }
+  for (const [key,html] of values) {
+    let node = billboardScenes.querySelector('[data-scene="'+CSS.escape(key)+'"]');
+    if (!node) {
+      node = document.createElement('div');
+      node.className='billboard-scene';
+      node.dataset.scene=key;
+      node.inert=true;
+      billboardScenes.append(node);
+    }
+    if (node.rendered !== html) node.innerHTML=node.rendered=html;
+  }
   if (billboard.sceneKeys !== keys) {
-    const showLive = values.has('live') && !billboard.sceneKeys?.includes('live');
-    billboard.sceneKeys = keys;
-    billboardScenes.innerHTML = [...values.keys()].map(key => '<div class="billboard-scene" data-scene="'+key+'"></div>').join('');
-    billboardDots.innerHTML = [...values.keys()].map(key => '<button type="button" data-scene="'+key+
-      '" aria-label="'+sceneNames[key]+'"></button>').join('');
-    selectScene(showLive ? 'live' : values.has(scene) ? scene : 'today');
-  }
-  for (const node of billboardScenes.children) {
-    const content = values.get(node.dataset.scene);
-    const html = '<span class="scene-label">'+esc(content.label)+'</span><strong class="scene-value num">'+content.value+
-      '</strong><span class="scene-caption">'+esc(content.caption)+'</span><span class="scene-footer">'+esc(content.footer)+'</span>';
-    if (node.rendered !== html) node.innerHTML = node.rendered = html;
-  }
+    const focusedScene=billboardDots.contains(document.activeElement) ? document.activeElement.dataset.scene : null;
+    billboard.sceneKeys=keys;
+    billboardDots.innerHTML=[...runningIds,'today','queue'].map((key,i)=>'<button type="button" data-scene="'+esc(key)+
+      '" aria-label="'+sceneTitle(key)+(key.startsWith('live-') && runningIds.length>1?' '+(i+1):'')+'"></button>').join('');
+    selectScene(target);
+    if(focusedScene) billboardDots.querySelector('[data-scene="'+CSS.escape(focusedScene)+'"]')?.focus({preventScroll:true});
+  } else if (billboardScenes.querySelector('.is-current')?.dataset.scene !== target) selectScene(target);
   paintBillboardClock();
 }
 
 function paintBillboardClock() {
-  const target = billboard.querySelector('[data-billboard-clock]');
-  const current = S.live.filter(shift => !shift.finished_at).at(-1);
-  if (!target || !current) return;
-  const value = clock(livePlayed(current,nowMs()));
-  if (target.textContent !== value) target.textContent = value;
+  for (const dial of billboard.querySelectorAll('[data-live-dial]')) {
+    const shift=previousRunning.get(dial.dataset.liveDial);
+    if(!shift) continue;
+    const now=nowMs();
+    const seconds=livePlayed(shift,now);
+    const time=dial.querySelector('[data-billboard-clock]');
+    const value=clock(seconds);
+    if(time.textContent!==value) time.textContent=value;
+    dial.style.setProperty('--turn',(seconds%3600)/36+'%');
+    const pause=dial.closest('.billboard-scene').querySelector('[data-pause-clock]');
+    if(pause) pause.textContent=clock(Math.max(0,now-Date.parse(shift.paused_at))/1000);
+    paintTrack(dial.closest('.billboard-scene'),shift,now);
+  }
 }
 
 function render(onlyLive = false) {
@@ -425,17 +579,17 @@ function render(onlyLive = false) {
   const shifts = S.shifts.filter(shift => Boolean(shift.archived) === archived);
   if (!archived) shifts.reverse();
   if (!onlyLive) shiftViews.clear();
-  const liveShifts = archived ? [] : S.live;
+  const liveShifts = archived ? [] : S.live.filter(shift=>shift.finished_at);
   renderShifts(liveSection, 'Сейчас', liveShifts, shift => liveAttendance(shift, nowMs()), true);
   if (!onlyLive) renderHistory(shifts);
   renderBillboard();
-  if (onlyLive) { if (activeCard?.startsWith('live-')) renderDetail(); return; }
-  if (activeCard) renderDetail();
+  if (playerView) renderPlayer();
+  if (onlyLive) { if (!playerView && activeCard?.startsWith('live-')) renderDetail(); return; }
+  if (activeCard && !playerView) renderDetail();
   const live = S.live.some(shift => !shift.finished_at);
-  background.classList.toggle('pulse', live);
-  background.style.setProperty('--c1', live ? '#ff3b30' : '#2f8f6a');
-  background.style.setProperty('--c2', live ? '#ff7a45' : '#1f5f8b');
-  statusLine.textContent = shifts.length || liveShifts.length ? '' : archived ? 'Оплаченных смен пока нет.' : 'Все смены разобраны.';
+  background.style.setProperty('--c1', live ? '#237c77' : '#2f8f6a');
+  background.style.setProperty('--c2', live ? '#384e93' : '#1f5f8b');
+  statusLine.textContent = shifts.length || (!archived && S.live.length) ? '' : archived ? 'Оплаченных смен пока нет.' : 'Все смены разобраны.';
 }
 
 function requestHours(body) {
@@ -448,6 +602,10 @@ function showConnect(message) {
   closeDetail(false);
   token = null;
   receivedSnapshot = false;
+  greetingUntil=0;
+  finishedScene=null;
+  previousRunning.clear();
+  runningIds=[];
   stopRealtime();
   safeStorage.removeItem(credentialKey);
   S.shifts = [];
@@ -459,10 +617,12 @@ function showConnect(message) {
   statusLine.textContent = message;
 }
 
-function setSyncState(label, ready = false) {
-  syncState.hidden = !token;
-  syncState.classList.toggle('connected',ready);
-  if (syncState.textContent !== label) syncState.textContent = label;
+function sendPresence(visible) {
+  if (!token) return;
+  fetch(SUPABASE_URL+'/functions/v1/shift-hours',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'presence',token,visible}),keepalive:true,
+  }).catch(()=>{});
 }
 
 function stopRealtime() {
@@ -471,7 +631,6 @@ function stopRealtime() {
   channelReady = false;
   clearTimeout(refreshTimer);
   if (previous) realtimeClient.removeChannel(previous);
-  setSyncState('');
 }
 
 function subscribe(topic) {
@@ -486,7 +645,6 @@ function subscribe(topic) {
   }).subscribe(status => {
     if (channel !== current) return;
     channelReady = status === 'SUBSCRIBED';
-    setSyncState(channelReady ? 'На связи' : 'Переподключение',channelReady);
     if (channelReady) refresh();
   });
 }
@@ -502,19 +660,22 @@ async function refresh() {
       return;
     }
     if (!response.ok) throw new Error('Unavailable');
-    const {data, now, topic} = await response.json();
+    const {data, now, topic, name} = await response.json();
+    viewerName=name || '';
     clockOff = Date.parse(now) - Date.now();
     updateData(data);
     controls.hidden = false;
-    const firstSnapshot = !receivedSnapshot;
-    render();
+    if (!receivedSnapshot) {
+      greetingUntil=Date.now()+2600;
+      scene='hello';
+      sendPresence(!document.hidden);
+    }
+    captureLiveChange();
     receivedSnapshot = true;
-    if (firstSnapshot) renderBillboard();
+    render();
     subscribe(topic);
-    setSyncState(channelReady ? 'На связи' : channel ? 'Подключение' : 'Обновление',channelReady);
   } catch {
     controls.hidden = false;
-    setSyncState(navigator.onLine ? 'Переподключение' : 'Нет сети');
     statusLine.textContent = 'Не удалось обновить смены. Пробуем восстановить связь.';
   } finally {
     loading = false;
@@ -560,8 +721,12 @@ connectForm.addEventListener('submit', async event => {
 });
 
 app.addEventListener('click', event => {
-  const card = event.target.closest('[data-shift]');
-  if (card) openDetail(card);
+  const liveDetail=event.target.closest('[data-live-detail]');
+  if(liveDetail){openDetail(liveDetail.closest('.billboard-scene'),liveDetail.dataset.liveDetail);return;}
+  const player = event.target.closest('[data-player]');
+  if (player) { openPlayer(player); return; }
+  const card = event.target.closest('.shift-open');
+  if (card) openDetail(card.closest('[data-shift]'));
   const tab = event.target.closest('[data-view]');
   if (!tab) return;
   viewMode = tab.dataset.view;
@@ -580,12 +745,21 @@ app.addEventListener('pointerdown', event => {
 app.querySelector('.screen').addEventListener('scroll', event => {
   if (!reduceMotion.matches) background.style.setProperty('--py',-Math.min(event.target.scrollTop,800)*.12+'px');
 },{passive:true});
+detailBody.addEventListener('click',event => {
+  const period=event.target.closest('[data-player-period]');
+  if (period && playerView) { playerPeriod=Number(period.dataset.playerPeriod);renderPlayer(); }
+});
 closeButton.onclick = () => closeDetail();
 document.querySelector('#scrim').onclick = () => closeDetail();
 document.addEventListener('keydown',event => {
-  if (!activeCard) return;
+  if (!activeCard && !playerView) return;
   if (event.key === 'Escape') closeDetail();
-  if (event.key === 'Tab') { event.preventDefault(); closeButton.focus(); }
+  if (event.key === 'Tab') {
+    const buttons=[...detail.querySelectorAll('button')];
+    const index=buttons.indexOf(document.activeElement);
+    event.preventDefault();
+    buttons[(index+(event.shiftKey?-1:1)+buttons.length)%buttons.length]?.focus();
+  }
 });
 const grab = detail.querySelector('.grab');
 let grabStart = 0;
@@ -599,10 +773,14 @@ document.addEventListener('visibilitychange',() => {
   background.classList.toggle('still',document.hidden);
   billboard.classList.toggle('document-hidden',document.hidden);
   scheduleScene();
+  sendPresence(!document.hidden);
   if (!document.hidden) refresh();
 });
 window.addEventListener('online',refresh);
-window.addEventListener('offline',() => setSyncState('Нет сети'));
+window.addEventListener('offline',() => { if(token) statusLine.textContent='Нет сети. Показаны последние данные.'; });
+window.addEventListener('pagehide',()=>sendPresence(false));
+window.addEventListener('pageshow',event=>{if(event.persisted){sendPresence(!document.hidden);refresh();}});
+setInterval(()=>{if(!document.hidden && receivedSnapshot) sendPresence(true);},15000);
 let lastMinute;
 setInterval(() => {
   if (document.hidden || !receivedSnapshot) return;
@@ -615,11 +793,6 @@ setInterval(() => { if (!document.hidden && !channelReady) refresh(); },5000);
 setInterval(() => { if (!document.hidden && channelReady) refresh(); },60000);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
-const invite = location.hash.slice(1);
-if (token) {
-  if (invite) history.replaceState(null,'',location.pathname);
-  refresh();
-} else {
-  showConnect('');
-  if (/^[a-f0-9]{24}$/.test(invite)) codeInput.value = invite;
-}
+if (location.hash) history.replaceState(null,'',location.pathname);
+if (token) refresh();
+else showConnect('');

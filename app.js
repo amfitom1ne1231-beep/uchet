@@ -1975,35 +1975,88 @@ function settingsSheet(){
   return sh;
 }
 function hoursAccessLevel(sh){
-  let code='';
-  sh.push({title:'Доступ к журналу часов',render(b){
-    b.innerHTML='<p class="lead">Приглашение действует сутки и подключает один браузер или приложение с экрана «Домой».</p>'+
-      '<button class="btn" data-invite>Создать приглашение</button>'+
-      (code?'<div class="card" style="margin-top:12px"><label for="hours-invite">Приглашение</label><input id="hours-invite" readonly><button class="btn sec" data-copy>Скопировать ссылку</button><p class="lead">Для приложения с экрана «Домой» используйте этот код.</p><input aria-label="Код подключения" readonly value="'+esc(code)+'"></div>':'')+
-      '<button class="btn ghost" data-revoke style="margin-top:12px">Закрыть доступ на всех устройствах</button>';
-    const link=b.querySelector('#hours-invite');
-    if(link){
-      link.value=new URL('hours/#'+code,location.href).href;
-      b.querySelector('[data-copy]').onclick=async()=>{
-        try{ await navigator.clipboard.writeText(link.value); toast('Ссылка скопирована'); }
-        catch{ link.select(); }
-      };
-    }
-    const call=async(button,action)=>{
-      button.disabled=true;
+  let level, timer, busy=false;
+  const call=async body=>{
+    const {data,error}=await sb.functions.invoke('shift-hours',{body});
+    if(error || data?.error) throw error || new Error(data.error);
+    return data;
+  };
+  const refreshDevices=async list=>{
+    try{
+      const {devices,now}=await call({action:'devices'});
+      if(!list.isConnected) return;
+      const html=devices.map(device=>{
+        const seen=device.last_seen_at;
+        const watching=device.visible && seen && Date.parse(now)-Date.parse(seen)<45000;
+        const status=!device.connected_at?'Ожидает подключения':watching?'Смотрит сейчас':
+          seen?'Был в журнале · '+dayText(khParts(Date.parse(seen)).d)+' в '+khParts(Date.parse(seen)).t:'Подключён';
+        return '<div class="row"><div class="mid"><div class="nm">'+esc(device.name||'Без имени')+'</div>'+
+          '<div class="sm">'+esc(status)+'</div></div><button class="pill" data-name="'+device.id+'" data-current="'+esc(device.name||'')+
+          '" aria-label="Изменить имя">✎</button><button class="pill" data-off="'+device.id+'">Отключить</button></div>';
+      }).join('')||'<p class="lead">Подключений пока нет.</p>';
+      if(list.rendered!==html) list.innerHTML=list.rendered=html;
+    }catch{ if(!list.rendered) list.textContent='Не удалось загрузить подключения.'; }
+  };
+  level=sh.push({title:'Доступ к журналу часов',onPop:()=>clearInterval(timer),render(b){
+    clearInterval(timer);
+    b.innerHTML='<p class="lead">Код действует сутки и подключает одно устройство.</p>'+
+      '<button class="btn sec" data-link>Скопировать адрес журнала</button>'+
+      '<form data-invite style="margin-top:12px"><input name="recipient" required maxlength="80" placeholder="Имя получателя" aria-label="Имя получателя">'+
+      '<button class="btn" style="margin-top:8px">Создать одноразовый код</button></form>'+
+      '<div data-code hidden style="margin-top:12px"><input aria-label="Одноразовый код" readonly><button class="btn sec" data-copy>Скопировать код</button></div>'+
+      '<span class="cap">Подключения</span><div class="list" data-devices></div>'+
+      '<button class="btn ghost" data-revoke style="margin-top:12px">Закрыть весь доступ</button>';
+    const list=b.querySelector('[data-devices]');
+    const codeBox=b.querySelector('[data-code]');
+    const codeField=codeBox.querySelector('input');
+    const copy=async value=>{try{await navigator.clipboard.writeText(value);toast('Скопировано');}catch{toast('Не удалось скопировать',true);}};
+    b.querySelector('[data-link]').onclick=()=>copy(new URL('hours/',location.href).href);
+    b.querySelector('[data-copy]').onclick=()=>copy(codeField.value);
+    const mutate=async body=>{
+      if(busy) return;
+      busy=true;
       try{
-        const {data,error}=await sb.functions.invoke('shift-hours',{body:{action}});
-        if(error || data?.error) throw error || new Error(data.error);
-        code=data.code||''; sh.top().render();
-        if(action==='revoke') toast('Доступ закрыт');
-      } catch{ toast('Не удалось обновить доступ',true); }
-      finally{ button.disabled=false; }
+        const data=await call(body);
+        if(data.code){codeField.value=data.code;codeBox.hidden=false;}
+        if(body.action==='revoke') codeBox.hidden=true;
+        await refreshDevices(list);
+      }catch{toast('Не удалось обновить доступ',true);}
+      finally{busy=false;}
     };
-    b.querySelector('[data-invite]').onclick=e=>call(e.currentTarget,'invite');
-    b.querySelector('[data-revoke]').onclick=async e=>{
-      const button=e.currentTarget;
-      if(await ask('Закрыть доступ ко всем приглашениям и подключённым устройствам?')) call(button,'revoke');
+    b.querySelector('[data-invite]').onsubmit=e=>{
+      e.preventDefault();
+      const name=new FormData(e.currentTarget).get('recipient').trim();
+      if(name) mutate({action:'invite',name});
     };
+    list.onclick=async e=>{
+      const rename=e.target.closest('[data-name]');
+      const off=e.target.closest('[data-off]');
+      if(rename){
+        const id=rename.dataset.name;
+        sh.push({title:'Имя получателя',render(panel){
+          panel.innerHTML='<form><input name="recipient" maxlength="80" required aria-label="Имя получателя" value="'+esc(rename.dataset.current)+'">'+
+            '<button class="btn" style="margin-top:8px">Сохранить</button></form>';
+          panel.querySelector('form').onsubmit=async event=>{
+            event.preventDefault();
+            const name=new FormData(event.currentTarget).get('recipient').trim();
+            if(!name) return;
+            const button=event.currentTarget.querySelector('button');
+            button.disabled=true;
+            try{await call({action:'rename',id,name});sh.pop();}
+            catch{toast('Не удалось сохранить имя',true);button.disabled=false;}
+          };
+        }});
+      }
+      if(off && await ask('Закрыть доступ этому устройству?')) mutate({action:'disconnect',id:off.dataset.off});
+    };
+    b.querySelector('[data-revoke]').onclick=async()=>{
+      if(await ask('Закрыть доступ всем устройствам и погасить коды?')) mutate({action:'revoke'});
+    };
+    refreshDevices(list);
+    timer=setInterval(()=>{
+      if(sh.closed || !list.isConnected){clearInterval(timer);return;}
+      if(!document.hidden && sh.top()===level) refreshDevices(list);
+    },5000);
   }});
 }
 function peopleLevel(sh,k){

@@ -1,5 +1,5 @@
-const CACHE = 'shift-hours-v6';
-const SHELL = ['./', './hours.css?v=6', './hours.js?v=6', './manifest.webmanifest',
+const CACHE = 'shift-hours-v7';
+const SHELL = ['./', './hours.css?v=7', './hours.js?v=7', './manifest.webmanifest',
   '../theme.css?v=1', '../core.js?v=2026-11-15.8'];
 
 self.addEventListener('install', event => {
