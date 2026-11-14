@@ -183,7 +183,6 @@ function renderShifts(section, title, shifts, getAttendance, isLive) {
       if (receivedSnapshot && data.open) card.classList.add('shift-arrived');
     }
     previous.delete(key);
-    card.classList.toggle('tone-live',data.open);
     card.classList.toggle('shift-paused',data.open && !!shift.paused_at);
     const content = '<button type="button" class="shift-open" aria-haspopup="dialog" aria-label="Подробности смены">'+html+
       '</button>'+playersHTML(data,shift,key);
