@@ -321,21 +321,103 @@ function renderHistory(shifts) {
   });
 }
 
+const billboard = document.querySelector('#billboard');
+const billboardScenes = billboard.querySelector('.billboard-scenes');
+const billboardDots = billboard.querySelector('.billboard-dots');
+const billboardToggle = billboard.querySelector('.billboard-toggle');
+const sceneNames = {live:'Текущая смена',today:'Сегодня',queue:'К расчёту'};
+let scene = 'today';
+let sceneTimer;
+let billboardPaused = false;
+
+function scheduleScene() {
+  clearTimeout(sceneTimer);
+  if (billboard.hidden || billboardPaused || reduceMotion.matches || document.hidden) return;
+  sceneTimer = setTimeout(() => {
+    const scenes = [...billboardScenes.children].map(node => node.dataset.scene);
+    selectScene(scenes[(scenes.indexOf(scene)+1)%scenes.length]);
+  },8000);
+}
+
+function selectScene(key) {
+  scene = key;
+  billboard.dataset.scene = key;
+  for (const node of billboardScenes.children) {
+    const active = node.dataset.scene === key;
+    node.classList.toggle('is-current',active);
+    node.setAttribute('aria-hidden',String(!active));
+  }
+  for (const button of billboardDots.children) {
+    button.setAttribute('aria-pressed',String(button.dataset.scene === key));
+  }
+  scheduleScene();
+}
+
+billboardDots.addEventListener('click',event => {
+  const button = event.target.closest('button');
+  if (button) selectScene(button.dataset.scene);
+});
+billboardToggle.onclick = () => {
+  billboardPaused = !billboardPaused;
+  billboard.classList.toggle('motion-paused',billboardPaused);
+  billboardToggle.setAttribute('aria-pressed',String(billboardPaused));
+  billboardToggle.setAttribute('aria-label',billboardPaused ? 'Возобновить анимацию' : 'Остановить анимацию');
+  billboardToggle.textContent = billboardPaused ? '▶' : 'Ⅱ';
+  scheduleScene();
+};
+reduceMotion.addEventListener('change',scheduleScene);
+
 function renderBillboard() {
-  const billboard = document.querySelector('#billboard');
   billboard.hidden = !receivedSnapshot;
-  if (billboard.hidden) return;
+  if (billboard.hidden) { clearTimeout(sceneTimer); return; }
   const now = nowMs();
   const date = khParts(now).d;
   const saved = S.shifts.filter(shift => shift.work_date === date);
   const live = S.live.filter(shift => khParts(Date.parse(shift.started_at)).d === date);
   const records = saved.map(savedAttendance).concat(live.map(shift => liveAttendance(shift,now)));
-  const pending = S.shifts.filter(shift => !shift.archived).length;
-  const html = '<div class="billboard-title"><span>Сегодня</span><time datetime="'+date+'">'+dayText(date)+'</time></div>'+
-    '<div class="billboard-stats"><div class="billboard-primary"><b class="num">'+totalDuration(records)+'</b><span>Без пауз</span></div>'+
-    '<div><b class="num">'+records.length+'</b><span>Смены</span></div>'+
-    '<div><b class="num">'+pending+'</b><span>К расчёту всего</span></div></div>';
-  if (billboard.rendered !== html) billboard.innerHTML = billboard.rendered = html;
+  const pending = S.shifts.filter(shift => !shift.archived);
+  const oldest = pending.at(-1);
+  const running = S.live.filter(shift => !shift.finished_at);
+  const current = running.at(-1);
+  const values = new Map();
+  if (current) {
+    const attendance = liveAttendance(current,now);
+    const team = operatorTeam(current,attendance,true);
+    values.set('live', {
+      label:current.paused_at ? 'На паузе' : 'Смена идёт',
+      value:'<span data-billboard-clock></span>',
+      caption:team.name || 'Начало · '+teamTime(attendance.start,attendance),
+      footer:running.length > 1 ? 'Смен сейчас · '+running.length : 'Время без пауз',
+    });
+  }
+  values.set('today',{label:'Сегодня · '+dayText(date),value:totalDuration(records),
+    caption:'Всего времени без пауз',footer:'Смен за сегодня · '+records.length});
+  values.set('queue',{label:'К расчёту',value:String(pending.length),caption:'Смен ждут расчёта',
+    footer:oldest ? 'Самая ранняя · '+dayText(oldest.work_date) : 'Очередь пуста'});
+  const keys = [...values.keys()].join(',');
+  if (billboard.sceneKeys !== keys) {
+    const showLive = values.has('live') && !billboard.sceneKeys?.includes('live');
+    billboard.sceneKeys = keys;
+    billboardScenes.innerHTML = [...values.keys()].map(key => '<div class="billboard-scene" data-scene="'+key+'"></div>').join('');
+    billboardDots.innerHTML = [...values.keys()].map(key => '<button type="button" data-scene="'+key+
+      '" aria-label="'+sceneNames[key]+'"></button>').join('');
+    selectScene(showLive ? 'live' : values.has(scene) ? scene : 'today');
+  }
+  for (const node of billboardScenes.children) {
+    const content = values.get(node.dataset.scene);
+    const html = '<span class="scene-label">'+esc(content.label)+'</span><strong class="scene-value num">'+content.value+
+      '</strong><span class="scene-caption">'+esc(content.caption)+'</span><span class="scene-footer">'+esc(content.footer)+'</span>';
+    if (node.rendered !== html) node.innerHTML = node.rendered = html;
+  }
+  paintBillboardClock();
+}
+
+function paintBillboardClock() {
+  const target = billboard.querySelector('[data-billboard-clock]');
+  const current = S.live.filter(shift => !shift.finished_at).at(-1);
+  if (!target || !current) return;
+  const value = clock(livePlayed(current,nowMs()));
+  if (target.textContent !== value) target.textContent = value;
 }
 
 function render(onlyLive = false) {
@@ -515,6 +597,8 @@ grab.onpointerup = event => { if (event.clientY - grabStart > 35) closeDetail();
 document.querySelector('#refresh').onclick = refresh;
 document.addEventListener('visibilitychange',() => {
   background.classList.toggle('still',document.hidden);
+  billboard.classList.toggle('document-hidden',document.hidden);
+  scheduleScene();
   if (!document.hidden) refresh();
 });
 window.addEventListener('online',refresh);
@@ -523,6 +607,7 @@ let lastMinute;
 setInterval(() => {
   if (document.hidden || !receivedSnapshot) return;
   paintClocks();
+  paintBillboardClock();
   const minute = Math.floor(nowMs()/60000);
   if (lastMinute !== minute) { lastMinute = minute; render(true); }
 },1000);

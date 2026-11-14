@@ -12,10 +12,10 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="../icon-180.png">
 <link rel="stylesheet" href="../theme.css?v=1">
-<link rel="stylesheet" href="hours.css?v=5">
+<link rel="stylesheet" href="hours.css?v=6">
 <script src="../core.js?v=2026-11-15.8" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js" defer></script>
-<script src="hours.js?v=5" defer></script>
+<script src="hours.js?v=6" defer></script>
 </head>
 <body class="hours">
 <div id="bg"><div class="lay"><i class="l l1"></i><i class="l l2"></i><i class="l l3"></i><i class="l l4"></i></div></div>
@@ -29,7 +29,12 @@
         <input id="code" type="text" required autocapitalize="off" autocomplete="off" spellcheck="false">
         <button type="submit" class="btn">Подключить</button>
       </form>
-      <section id="billboard" class="card hours-billboard sheen" aria-label="Сводка за сегодня" hidden></section>
+      <section id="billboard" class="card hours-billboard sheen" aria-label="Табло смен" hidden>
+        <div class="billboard-light" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="billboard-scenes"></div>
+        <div class="billboard-controls"><div class="billboard-dots" role="group" aria-label="Сцены табло"></div>
+          <button class="billboard-toggle" type="button" aria-label="Остановить анимацию" aria-pressed="false">Ⅱ</button></div>
+      </section>
       <div id="controls" hidden>
         <div class="segbig" role="group" aria-label="Смены">
           <button type="button" data-view="pending" aria-pressed="true">К расчёту</button>
