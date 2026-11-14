@@ -10,7 +10,7 @@ const safeStorage={
   setItem:(k,v)=>{ try{ localStorage.setItem(k,v); }catch(e){ mem[k]=v; } },
   removeItem:k=>{ try{ localStorage.removeItem(k); }catch(e){ delete mem[k]; } }
 };
-const sb = window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{
+const sb = window.supabase?.createClient(SUPABASE_URL,SUPABASE_KEY,{
   auth:{persistSession:true,autoRefreshToken:true,storage:safeStorage}
 });
 
@@ -263,7 +263,7 @@ function attendanceRow(name,spans,pauses,start,end,open=false,unknownPause=0){
     ms:unknownPause&&!full?null:Math.max(0,spanLen(spanMinus([p],pauses))-unknownPause),
   }));
   const ms=intervals.some(p=>p.ms==null)?null:intervals.reduce((sum,p)=>sum+p.ms,0);
-  return {name,intervals,ms};
+  return {name,intervals,ms,full,activeSpans:spanMinus(spans,pauses)};
 }
 function liveAttendance(l,now){
   const start=Date.parse(l.started_at), end=l.finished_at?Date.parse(l.finished_at):now;
@@ -280,7 +280,7 @@ function liveAttendance(l,now){
     return attendanceRow(name(p.id),spans,merged,start,end,open,extra>=1000?extra:0);
   };
   return {
-    start,end,ms,
+    start,end,ms,unknownPause:extra>=1000,
     groups:[
       {title:'Кастомеры',rows:livePlayerSpans(l,now).map(p=>row(p,cName,l.customer_log))},
       {title:'Операторы',rows:liveWorkerSpans(l,now).map(p=>row(p,wName,l.worker_log))},
@@ -299,7 +299,7 @@ function savedAttendance(s){
   };
   return {
     start,end,ms:Math.max(0,end-start-pauseMs-unknownPause),estimated:!s.ended_at,
-    unknownTimes:!s.start_time&&!s.ended_at,
+    unknownTimes:!s.start_time&&!s.ended_at,unknownPause:unknownPause>0,
     groups:[
       {title:'Кастомеры',rows:s.customerIds.map(id=>row(id,s.custLinks,cName))},
       {title:'Операторы',rows:s.workerIds.map(id=>row(id,s.workerLinks,wName))},
@@ -618,3 +618,26 @@ async function refreshAuth(){
 }
 const wName=id=>{const w=S.workers.find(x=>x.id===id);return w?w.name:'—';};
 const cName=id=>{const c=S.customers.find(x=>x.id===id);return c?c.name:'—';};
+
+const attendanceDuration=ms=>ms==null?'нет точного итога':ms===0?'0 мин':pauseText(Math.floor(ms/60000))||'меньше минуты';
+function attendanceText(data){
+  const date=khParts(data.start).d;
+  const at=ms=>{ const p=khParts(ms); return (p.d===date?'':dayText(p.d)+', ')+p.t; };
+  const timing=p=>data.unknownTimes?'':at(p.s)+'–'+(p.e==null?'сейчас':at(p.e));
+  const total=ms=>(data.estimated&&ms!=null?'≈ ':'')+attendanceDuration(ms);
+  const heading=(data.unknownTimes?'':timing({s:data.start,e:data.open?null:data.end})+' · ')+total(data.ms)+' без пауз';
+  const groups=data.groups.filter(g=>g.rows.length).map(g=>({title:g.title,rows:g.rows.map(r=>{
+    const intervals=r.intervals.map(p=>({time:timing(p),duration:total(p.ms)}));
+    const range=intervals.length===1?intervals[0].time:'';
+    return {name:r.name,duration:(range?range+' · ':'')+total(r.ms),intervals:intervals.length>1?intervals:[]};
+  })}));
+  return {heading,groups};
+}
+function attendanceHTML(data){
+  const {heading,groups}=attendanceText(data);
+  return '<div class="kv attendance-summary"><span>Вся смена</span><b>'+esc(heading)+'</b></div>'+
+    groups.map(g=>'<span class="cap">'+g.title+'</span><div class="card attendance">'+
+      g.rows.map(r=>'<div class="attendance-person"><div class="kv"><span>'+esc(r.name)+'</span><b>'+esc(r.duration)+'</b></div>'+
+        r.intervals.map(p=>'<div class="kv attendance-interval"><span>'+esc(p.time)+'</span><b>'+esc(p.duration)+'</b></div>').join('')+
+      '</div>').join('')+'</div>').join('');
+}

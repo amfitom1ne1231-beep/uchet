@@ -27,28 +27,6 @@ function dayLabel(ds){
 }
 const tHM=ms=>khParts(ms).t;
 const dur=ms=>{ const m=Math.round(ms/60000), h=Math.floor(m/60); return h+':'+z2(m%60); };
-const attendanceDuration=ms=>ms==null?'нет точного итога':ms===0?'0 мин':pauseText(Math.floor(ms/60000))||'меньше минуты';
-function attendanceText(data){
-  const date=khParts(data.start).d;
-  const at=ms=>{ const p=khParts(ms); return (p.d===date?'':dayText(p.d)+', ')+p.t; };
-  const timing=p=>data.unknownTimes?'':at(p.s)+'–'+(p.e==null?'сейчас':at(p.e));
-  const total=ms=>(data.estimated&&ms!=null?'≈ ':'')+attendanceDuration(ms);
-  const heading=(data.unknownTimes?'':timing({s:data.start,e:data.open?null:data.end})+' · ')+total(data.ms)+' без пауз';
-  const groups=data.groups.filter(g=>g.rows.length).map(g=>({title:g.title,rows:g.rows.map(r=>{
-    const intervals=r.intervals.map(p=>({time:timing(p),duration:total(p.ms)}));
-    const range=intervals.length===1?intervals[0].time:'';
-    return {name:r.name,duration:(range?range+' · ':'')+total(r.ms),intervals:intervals.length>1?intervals:[]};
-  })}));
-  return {heading,groups};
-}
-function attendanceHTML(data){
-  const {heading,groups}=attendanceText(data);
-  return '<div class="kv attendance-summary"><span>Вся смена</span><b>'+esc(heading)+'</b></div>'+
-    groups.map(g=>'<span class="cap">'+g.title+'</span><div class="card attendance">'+
-      g.rows.map(r=>'<div class="attendance-person"><div class="kv"><span>'+esc(r.name)+'</span><b>'+esc(r.duration)+'</b></div>'+
-        r.intervals.map(p=>'<div class="kv attendance-interval"><span>'+esc(p.time)+'</span><b>'+esc(p.duration)+'</b></div>').join('')+
-      '</div>').join('')+'</div>').join('');
-}
 async function copyAttendance(data){
   const {heading,groups}=attendanceText(data);
   const txt=dayText(khParts(data.start).d)+' · '+heading+'\n'+groups.map(g=>g.title+'\n'+

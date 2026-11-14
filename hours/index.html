@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<title>Часы смен</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#111714;color:#f3f7f4}
+body{max-width:720px;margin:0 auto;padding:clamp(16px,5vw,40px);line-height:1.5}
+h1{font-size:clamp(32px,8vw,48px);letter-spacing:-.045em;margin:0 0 20px}
+h2{font-size:19px;margin:24px 0 10px}
+p{margin:0 0 12px}
+.controls{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.controls[hidden]{display:none}
+label{display:grid;gap:4px;color:#c1d0c6}
+button,select{font:inherit;color:inherit;border:1px solid #42584b;background:#202d26;border-radius:10px;padding:9px 12px}
+button,summary,select{cursor:pointer}
+:focus-visible{outline:2px solid #93e0ac;outline-offset:3px}
+#status{color:#c1d0c6;margin-top:12px}
+details{background:#1b2620;border:1px solid #35483c;border-radius:14px;margin:8px 0;overflow:hidden}
+summary{padding:12px 15px;font-weight:650}
+summary small{color:#a9ddba;font-weight:500;margin-left:10px}
+.detail{padding:0 15px 15px}
+.cap{display:block;color:#a9ddba;font-size:13px;margin:16px 0 4px}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0}
+.kv b{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.attendance-person{border-top:1px solid #35483c}
+.attendance-interval{padding-left:12px;color:#c1d0c6;font-size:14px}
+.attendance-summary{border-bottom:1px solid #35483c}
+</style>
+<script src="../core.js?v=2026-11-15.7" defer></script>
+<script src="hours.js?v=1" defer></script>
+</head>
+<body>
+<h1>Часы смен</h1>
+<div class="controls" hidden id="controls">
+  <label>Период<select id="period"><option value="7">7 дней</option><option value="30" selected>30 дней</option><option value="all">Всё время</option></select></label>
+  <button id="refresh" type="button">Обновить</button>
+</div>
+<p id="status" role="status">Загрузка…</p>
+<section id="live" aria-label="Текущие смены"></section>
+<section id="history" aria-label="История смен"></section>
+</body>
+</html>
