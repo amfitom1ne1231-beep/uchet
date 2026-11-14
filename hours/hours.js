@@ -19,6 +19,16 @@ const monthNames = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 
 const shiftViews = new Map();
 let token = safeStorage.getItem(credentialKey);
 let loading = false;
+let refreshAgain = false;
+let refreshTimer;
+let channel;
+let channelTopic;
+let channelReady = false;
+let receivedSnapshot = false;
+const syncState = document.querySelector('#sync-state');
+const realtimeClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false,storageKey:'shift-hours-realtime'},
+});
 let connecting = false;
 let viewMode = 'pending';
 let activeCard = null;
@@ -115,7 +125,15 @@ function extrasHTML(shift) {
 }
 
 function renderShifts(section, title, shifts, getAttendance, isLive) {
-  const html = shifts.length ? '<h2 class="cap">' + title + '</h2><div class="shift-list">' + shifts.map((shift, i) => {
+  if (!shifts.length) {
+    if (section.firstChild) section.replaceChildren();
+    return;
+  }
+  if (!section.firstChild) section.innerHTML = '<h2 class="cap"></h2><div class="shift-list"></div>';
+  section.firstChild.textContent = title;
+  const list = section.lastChild;
+  const previous = new Map([...list.children].map(card => [card.dataset.shift,card]));
+  const cards = shifts.map((shift, i) => {
     const data = getAttendance(shift);
     const date = shift.work_date || khParts(data.start).d;
     const [, month, day] = date.split('-').map(Number);
@@ -126,18 +144,42 @@ function renderShifts(section, title, shifts, getAttendance, isLive) {
     const key = (isLive ? 'live-' : 'saved-') + shift.id;
     const team = operatorTeam(shift,data,isLive);
     shiftViews.set(key, {shift, data, date, isLive, team});
-    return '<button class="shift-card card sheen ' + (data.open ? 'tone-live' : '') + '" data-shift="' + esc(key) +
-      '" style="--d:' + -(i % 9) + 's" type="button" aria-haspopup="dialog"><span class="shift-head">' +
+    const html = '<span class="shift-head">' +
       '<span class="shift-day"><b class="num">' + day + '</b><small>' + monthNames[month - 1] + '</small></span>' +
       '<span class="shift-range"><b class="num">' + range + '</b>' + (state ? '<small>' + state + '</small>' : '') + '</span>' +
-      '<span class="shift-hours num">' + duration(data, data.ms) + '<span class="chev">›</span></span></span>' +
+      '<span class="shift-hours num">' + (data.open ? '<span class="live-clock" data-clock></span>' : duration(data,data.ms)) + '<span class="chev">›</span></span></span>' +
       (team.name ? '<span class="operator-line"><span class="group-label">Операторы</span><b>'+esc(team.name)+'</b></span>' : '') +
-      changesHTML(team,data) + extrasHTML(shift) + playersHTML(data) + '</button>';
-  }).join('') + '</div>' : '';
-  if (section.rendered === html) return;
-  const focused = document.activeElement?.dataset.shift;
-  section.innerHTML = section.rendered = html;
-  if (focused) section.querySelector('[data-shift="' + CSS.escape(focused) + '"]')?.focus({preventScroll:true});
+      changesHTML(team,data) + extrasHTML(shift) + playersHTML(data);
+    let card = previous.get(key);
+    if (!card) {
+      card = document.createElement('button');
+      card.className = 'shift-card card sheen';
+      card.type = 'button';
+      card.dataset.shift = key;
+      card.setAttribute('aria-haspopup','dialog');
+      card.style.setProperty('--d',-(i % 9)+'s');
+      if (receivedSnapshot && data.open) card.classList.add('shift-arrived');
+    }
+    previous.delete(key);
+    card.classList.toggle('tone-live',data.open);
+    card.classList.toggle('shift-paused',data.open && !!shift.paused_at);
+    if (card.rendered !== html) card.innerHTML = card.rendered = html;
+    return card;
+  });
+  for (const card of previous.values()) card.remove();
+  cards.forEach((card,i) => { if (list.children[i] !== card) list.insertBefore(card,list.children[i] || null); });
+  paintClocks();
+}
+
+function paintClocks() {
+  for (const card of liveSection.querySelectorAll('[data-shift]')) {
+    const time = card.querySelector('[data-clock]');
+    const shift = shiftViews.get(card.dataset.shift)?.shift;
+    if (time && shift) {
+      const value = clock(livePlayed(shift,nowMs()));
+      if (time.textContent !== value) time.textContent = value;
+    }
+  }
 }
 
 function teamTime(ms,data) {
@@ -219,14 +261,15 @@ function closeDetail(restoreFocus = true) {
   if (restoreFocus) card?.focus({preventScroll:true});
 }
 
-function render() {
+function render(onlyLive = false) {
   const archived = viewMode === 'archive';
   const shifts = S.shifts.filter(shift => Boolean(shift.archived) === archived);
   if (!archived) shifts.reverse();
-  shiftViews.clear();
+  if (!onlyLive) shiftViews.clear();
   const liveShifts = archived ? [] : S.live;
   renderShifts(liveSection, 'Сейчас', liveShifts, shift => liveAttendance(shift, nowMs()), true);
-  renderShifts(historySection, archived ? 'Оплаченные смены' : 'Завершённые смены', shifts, savedAttendance, false);
+  if (!onlyLive) renderShifts(historySection, archived ? 'Оплаченные смены' : 'Завершённые смены', shifts, savedAttendance, false);
+  if (onlyLive) { if (activeCard?.startsWith('live-')) renderDetail(); return; }
   const summary = document.querySelector('#queue-summary');
   summary.hidden = archived || !shifts.length;
   summary.innerHTML = summary.hidden ? '' : '<div><span class="group-label">К расчёту</span><b class="num">'+shifts.length+
@@ -248,6 +291,8 @@ function requestHours(body) {
 function showConnect(message) {
   closeDetail(false);
   token = null;
+  receivedSnapshot = false;
+  stopRealtime();
   safeStorage.removeItem(credentialKey);
   S.shifts = [];
   S.live = [];
@@ -258,8 +303,41 @@ function showConnect(message) {
   statusLine.textContent = message;
 }
 
+function setSyncState(label, ready = false) {
+  syncState.hidden = !token;
+  syncState.classList.toggle('connected',ready);
+  if (syncState.textContent !== label) syncState.textContent = label;
+}
+
+function stopRealtime() {
+  const previous = channel;
+  channel = channelTopic = null;
+  channelReady = false;
+  clearTimeout(refreshTimer);
+  if (previous) realtimeClient.removeChannel(previous);
+  setSyncState('');
+}
+
+function subscribe(topic) {
+  if (!topic || !realtimeClient || channelTopic === topic) return;
+  stopRealtime();
+  channelTopic = topic;
+  const current = realtimeClient.channel(topic);
+  channel = current;
+  current.on('broadcast',{event:'refresh'},() => {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refresh,120);
+  }).subscribe(status => {
+    if (channel !== current) return;
+    channelReady = status === 'SUBSCRIBED';
+    setSyncState(channelReady ? 'На связи' : 'Переподключение',channelReady);
+    if (channelReady) refresh();
+  });
+}
+
 async function refresh() {
-  if (!token || loading) return;
+  if (!token) return;
+  if (loading) { refreshAgain = true; return; }
   loading = true;
   try {
     const response = await requestHours({token});
@@ -268,16 +346,21 @@ async function refresh() {
       return;
     }
     if (!response.ok) throw new Error('Unavailable');
-    const {data, now} = await response.json();
+    const {data, now, topic} = await response.json();
     clockOff = Date.parse(now) - Date.now();
     updateData(data);
     controls.hidden = false;
     render();
+    receivedSnapshot = true;
+    subscribe(topic);
+    setSyncState(channelReady ? 'На связи' : channel ? 'Подключение' : 'Обновление',channelReady);
   } catch {
     controls.hidden = false;
-    statusLine.textContent = 'Не удалось обновить смены. Попробуйте ещё раз.';
+    setSyncState(navigator.onLine ? 'Переподключение' : 'Нет сети');
+    statusLine.textContent = 'Не удалось обновить смены. Пробуем восстановить связь.';
   } finally {
     loading = false;
+    if (refreshAgain) { refreshAgain = false; refresh(); }
   }
 }
 
@@ -358,7 +441,17 @@ document.addEventListener('visibilitychange',() => {
   background.classList.toggle('still',document.hidden);
   if (!document.hidden) refresh();
 });
-setInterval(() => { if (!document.hidden) refresh(); },30000);
+window.addEventListener('online',refresh);
+window.addEventListener('offline',() => setSyncState('Нет сети'));
+let lastMinute;
+setInterval(() => {
+  if (document.hidden || !receivedSnapshot || !S.live.some(shift => !shift.finished_at)) return;
+  paintClocks();
+  const minute = Math.floor(nowMs()/60000);
+  if (lastMinute !== minute) { lastMinute = minute; render(true); }
+},1000);
+setInterval(() => { if (!document.hidden && !channelReady) refresh(); },5000);
+setInterval(() => { if (!document.hidden && channelReady) refresh(); },60000);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
 const invite = location.hash.slice(1);
