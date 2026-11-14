@@ -124,6 +124,26 @@ function extrasHTML(shift) {
     (note ? '<span class="shift-note">' + esc(note) + '</span>' : '') + '</span>';
 }
 
+function miniTimeline(shift,data,team) {
+  const pauses = livePauseSpans(shift,data.end);
+  if (shift.paused_at && !shift.finished_at && !pauses.some(p => p.s === Date.parse(shift.paused_at))) {
+    pauses.push({s:Date.parse(shift.paused_at),e:data.end});
+  }
+  const events = pauses.map(p => {
+    const ongoing = data.open && p.s === Date.parse(shift.paused_at);
+    return {at:p.s,label:ongoing ? 'Пауза идёт' : 'Пауза до '+teamTime(p.e,data),kind:'pause'};
+  }).concat(team.changes.map(change => ({...change,kind:'swap'}))).sort((a,b) => a.at-b.at);
+  const point = (at,kind) => '<i class="mini-point '+kind+'" data-at="'+at+'"></i>';
+  return '<span class="mini-timeline"><span class="mini-track" aria-hidden="true">'+
+    point(data.start,'start') + pauses.map(p => '<i class="mini-pause" data-at="'+p.s+'" data-until="'+
+      (data.open && p.s === Date.parse(shift.paused_at) ? '' : p.e)+'"></i>').join('') +
+    events.filter(event => event.kind === 'swap').map(event => point(event.at,'swap')).join('')+
+    '</span><span class="mini-times num"><span>Старт '+teamTime(data.start,data)+'</span><span>'+
+    (data.open ? 'Сейчас' : teamTime(data.end,data))+'</span></span>'+
+    events.map(event => '<span class="mini-event '+event.kind+'"><time class="num">'+teamTime(event.at,data)+
+      '</time><span>'+esc(event.label)+'</span></span>').join('')+'</span>';
+}
+
 function renderShifts(section, title, shifts, getAttendance, isLive) {
   if (!shifts.length) {
     if (section.firstChild) section.replaceChildren();
@@ -149,7 +169,7 @@ function renderShifts(section, title, shifts, getAttendance, isLive) {
       '<span class="shift-range"><b class="num">' + range + '</b>' + (state ? '<small>' + state + '</small>' : '') + '</span>' +
       '<span class="shift-hours num">' + (data.open ? '<span class="live-clock" data-clock></span>' : duration(data,data.ms)) + '<span class="chev">›</span></span></span>' +
       (team.name ? '<span class="operator-line"><span class="group-label">Операторы</span><b>'+esc(team.name)+'</b></span>' : '') +
-      changesHTML(team,data) + extrasHTML(shift) + playersHTML(data);
+      (isLive ? miniTimeline(shift,data,team) : changesHTML(team,data)) + extrasHTML(shift) + playersHTML(data);
     let card = previous.get(key);
     if (!card) {
       card = document.createElement('button');
@@ -168,14 +188,23 @@ function renderShifts(section, title, shifts, getAttendance, isLive) {
   });
   for (const card of previous.values()) card.remove();
   cards.forEach((card,i) => { if (list.children[i] !== card) list.insertBefore(card,list.children[i] || null); });
-  paintClocks();
+  if (isLive) paintClocks();
 }
 
 function paintClocks() {
   for (const card of liveSection.querySelectorAll('[data-shift]')) {
     const time = card.querySelector('[data-clock]');
     const shift = shiftViews.get(card.dataset.shift)?.shift;
-    if (time && shift) {
+    if (!shift) continue;
+    const start = Date.parse(shift.started_at);
+    const end = shift.finished_at ? Date.parse(shift.finished_at) : nowMs();
+    const position = at => Math.min(100,Math.max(0,(at-start)/Math.max(1,end-start)*100));
+    for (const mark of card.querySelectorAll('[data-at]')) {
+      const left = position(Number(mark.dataset.at));
+      mark.style.left = left+'%';
+      if ('until' in mark.dataset) mark.style.width = Math.max(0,position(Number(mark.dataset.until) || end)-left)+'%';
+    }
+    if (time) {
       const value = clock(livePlayed(shift,nowMs()));
       if (time.textContent !== value) time.textContent = value;
     }
@@ -261,6 +290,54 @@ function closeDetail(restoreFocus = true) {
   if (restoreFocus) card?.focus({preventScroll:true});
 }
 
+function totalDuration(records) {
+  return duration({estimated:records.some(record => record.estimated)},records.reduce((sum,record) => sum+record.ms,0));
+}
+
+function renderHistory(shifts) {
+  const days = new Map();
+  for (const shift of shifts) {
+    if (!days.has(shift.work_date)) days.set(shift.work_date,[]);
+    days.get(shift.work_date).push(shift);
+  }
+  const previous = new Map([...historySection.children].map(group => [group.dataset.day,group]));
+  const groups = [...days].map(([date,entries]) => {
+    const group = previous.get(date) ?? document.createElement('section');
+    previous.delete(date);
+    group.dataset.day = date;
+    group.className = 'hours-day';
+    const records = new Map(entries.map(shift => [shift.id,savedAttendance(shift)]));
+    const heading = date === today() ? 'Сегодня' : dayText(date)+' '+date.slice(0,4);
+    renderShifts(group,heading,entries,shift => records.get(shift.id),false);
+    const total = document.createElement('span');
+    total.className = 'day-total num';
+    total.textContent = totalDuration([...records.values()]);
+    group.firstChild.append(total);
+    return group;
+  });
+  for (const group of previous.values()) group.remove();
+  groups.forEach((group,i) => {
+    if (historySection.children[i] !== group) historySection.insertBefore(group,historySection.children[i] || null);
+  });
+}
+
+function renderBillboard() {
+  const billboard = document.querySelector('#billboard');
+  billboard.hidden = !receivedSnapshot;
+  if (billboard.hidden) return;
+  const now = nowMs();
+  const date = khParts(now).d;
+  const saved = S.shifts.filter(shift => shift.work_date === date);
+  const live = S.live.filter(shift => khParts(Date.parse(shift.started_at)).d === date);
+  const records = saved.map(savedAttendance).concat(live.map(shift => liveAttendance(shift,now)));
+  const pending = S.shifts.filter(shift => !shift.archived).length;
+  const html = '<div class="billboard-title"><span>Сегодня</span><time datetime="'+date+'">'+dayText(date)+'</time></div>'+
+    '<div class="billboard-stats"><div class="billboard-primary"><b class="num">'+totalDuration(records)+'</b><span>Без пауз</span></div>'+
+    '<div><b class="num">'+records.length+'</b><span>Смены</span></div>'+
+    '<div><b class="num">'+pending+'</b><span>К расчёту всего</span></div></div>';
+  if (billboard.rendered !== html) billboard.innerHTML = billboard.rendered = html;
+}
+
 function render(onlyLive = false) {
   const archived = viewMode === 'archive';
   const shifts = S.shifts.filter(shift => Boolean(shift.archived) === archived);
@@ -268,12 +345,9 @@ function render(onlyLive = false) {
   if (!onlyLive) shiftViews.clear();
   const liveShifts = archived ? [] : S.live;
   renderShifts(liveSection, 'Сейчас', liveShifts, shift => liveAttendance(shift, nowMs()), true);
-  if (!onlyLive) renderShifts(historySection, archived ? 'Оплаченные смены' : 'Завершённые смены', shifts, savedAttendance, false);
+  if (!onlyLive) renderHistory(shifts);
+  renderBillboard();
   if (onlyLive) { if (activeCard?.startsWith('live-')) renderDetail(); return; }
-  const summary = document.querySelector('#queue-summary');
-  summary.hidden = archived || !shifts.length;
-  summary.innerHTML = summary.hidden ? '' : '<div><span class="group-label">К расчёту</span><b class="num">'+shifts.length+
-    '</b></div><span class="t2">Самая ранняя · '+dayText(shifts[0].work_date)+'</span>';
   if (activeCard) renderDetail();
   const live = S.live.some(shift => !shift.finished_at);
   background.classList.toggle('pulse', live);
@@ -350,8 +424,10 @@ async function refresh() {
     clockOff = Date.parse(now) - Date.now();
     updateData(data);
     controls.hidden = false;
+    const firstSnapshot = !receivedSnapshot;
     render();
     receivedSnapshot = true;
+    if (firstSnapshot) renderBillboard();
     subscribe(topic);
     setSyncState(channelReady ? 'На связи' : channel ? 'Подключение' : 'Обновление',channelReady);
   } catch {
@@ -445,7 +521,7 @@ window.addEventListener('online',refresh);
 window.addEventListener('offline',() => setSyncState('Нет сети'));
 let lastMinute;
 setInterval(() => {
-  if (document.hidden || !receivedSnapshot || !S.live.some(shift => !shift.finished_at)) return;
+  if (document.hidden || !receivedSnapshot) return;
   paintClocks();
   const minute = Math.floor(nowMs()/60000);
   if (lastMinute !== minute) { lastMinute = minute; render(true); }

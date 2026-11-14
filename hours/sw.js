@@ -1,6 +1,6 @@
-const CACHE = 'shift-hours-v4';
-const SHELL = ['./', './hours.css?v=4', './hours.js?v=4', './manifest.webmanifest',
-  '../theme.css?v=1', '../core.js?v=4026-11-15.8'];
+const CACHE = 'shift-hours-v5';
+const SHELL = ['./', './hours.css?v=5', './hours.js?v=5', './manifest.webmanifest',
+  '../theme.css?v=1', '../core.js?v=2026-11-15.8'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
